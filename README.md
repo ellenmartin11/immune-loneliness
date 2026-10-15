@@ -69,8 +69,8 @@ Additional observational analyses may examine relationships between immune bioma
 
 ```text
 .
-├── scripts/          # R, Python, and shell analysis scripts
-├── src/              # Reusable functions and analysis utilities
+├── scripts/          # R, Python, shell analysis scripts and custom reusable functions. 
+├── results/          # Interrim analytic results
 ├── config/           # Configuration files and phenotype definitions
 ├── docs/             # Project documentation and analysis notes
 ├── README.md
