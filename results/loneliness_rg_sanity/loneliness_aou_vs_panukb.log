@@ -1,0 +1,65 @@
+*********************************************************************
+* LD Score Regression (LDSC)
+* Version 3.0.1
+* (C) 2014-2019 Brendan Bulik-Sullivan and Hilary Finucane
+* Broad Institute of MIT and Harvard / MIT Department of Mathematics
+* GNU General Public License v3
+*********************************************************************
+Call: 
+./ldsc.py \
+--out /gpfs/gibbs/project/polimanti/ejm96/immune/results/loneliness_rg_sanity/loneliness_aou_vs_panukb \
+--rg /vast/palmer/pi/polimanti/jun_h/programs/24_sdoh/data/gwas/aou_sdoh_gwas_munged/UCLA_loneliness_scale_eur.sumstats.gz,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_categorical-2020-both_sexes-2020.tsv.sumstats.gz \
+--ref-ld-chr /gpfs/gibbs/pi/polimanti/LDSC_files/eur_w_ld_chr/ \
+--w-ld-chr /gpfs/gibbs/pi/polimanti/LDSC_files/eur_w_ld_chr/ 
+
+Beginning analysis at Tue Oct 13 15:47:56 2026
+Reading summary statistics from /vast/palmer/pi/polimanti/jun_h/programs/24_sdoh/data/gwas/aou_sdoh_gwas_munged/UCLA_loneliness_scale_eur.sumstats.gz ...
+Read summary statistics for 1180985 SNPs.
+Reading reference panel LD Score from /gpfs/gibbs/pi/polimanti/LDSC_files/eur_w_ld_chr/[1-22] ... (ldscore_fromlist)
+Read reference panel LD Scores for 1290028 SNPs.
+Removing partitioned LD Scores with zero variance.
+Reading regression weight LD Score from /gpfs/gibbs/pi/polimanti/LDSC_files/eur_w_ld_chr/[1-22] ... (ldscore_fromlist)
+Read regression weight LD Scores for 1290028 SNPs.
+After merging with reference panel LD, 1172737 SNPs remain.
+After merging with regression SNP LD, 1172737 SNPs remain.
+Computing rg for phenotype 2/2
+Reading summary statistics from /gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_categorical-2020-both_sexes-2020.tsv.sumstats.gz ...
+Read summary statistics for 1217311 SNPs.
+After merging with summary statistics, 1172737 SNPs remain.
+1170070 SNPs with valid alleles.
+
+Heritability of phenotype 1
+---------------------------
+Total Observed scale h2: 0.0848 (0.0041)
+Lambda GC: 1.2731
+Mean Chi^2: 1.3131
+Intercept: 1.0309 (0.0076)
+Ratio: 0.0988 (0.0243)
+
+Heritability of phenotype 2/2
+-----------------------------
+Total Observed scale h2: 0.0602 (0.0032)
+Lambda GC: 1.2631
+Mean Chi^2: 1.3179
+Intercept: 1.0301 (0.0076)
+Ratio: 0.0947 (0.024)
+
+Genetic Covariance
+------------------
+Total Observed scale gencov: 0.0568 (0.0028)
+Mean z1*z2: 0.2267
+Intercept: -0.0002 (0.0052)
+
+Genetic Correlation
+-------------------
+Genetic Correlation: 0.7949 (0.0317)
+Z-score: 25.08
+P: 8.214e-139
+
+
+Summary of Genetic Correlation Results
+                                                                                                                   p1                                                                                                                          p2     rg     se       z      p  h2_obs  h2_obs_se  h2_int  h2_int_se  gcov_int  gcov_int_se
+/vast/palmer/pi/polimanti/jun_h/programs/24_sdoh/data/gwas/aou_sdoh_gwas_munged/UCLA_loneliness_scale_eur.sumstats.gz /gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_categorical-2020-both_sexes-2020.tsv.sumstats.gz 0.7949 0.0317 25.0800 0.0000  0.0602     0.0032  1.0301     0.0076   -0.0002       0.0052
+
+Analysis finished at Tue Oct 13 15:48:10 2026
+Total time elapsed: 14.08s

@@ -1,0 +1,65 @@
+*********************************************************************
+* LD Score Regression (LDSC)
+* Version 3.0.1
+* (C) 2014-2019 Brendan Bulik-Sullivan and Hilary Finucane
+* Broad Institute of MIT and Harvard / MIT Department of Mathematics
+* GNU General Public License v3
+*********************************************************************
+Call: 
+./ldsc.py \
+--out /gpfs/gibbs/project/polimanti/ejm96/immune/results/basophils_rg_sanity/basophils_finngen_vs_panukb \
+--rg /vast/palmer/scratch/polimanti/ejm96/basophils_rg_sanity/basophils_panukb_GRCh38.sumstats.gz,/vast/palmer/scratch/polimanti/ejm96/basophils_rg_sanity/basophils_finngen_GRCh38_corrected.sumstats.gz \
+--ref-ld-chr /gpfs/gibbs/pi/polimanti/LDSC_files/eur_w_ld_chr/ \
+--w-ld-chr /gpfs/gibbs/pi/polimanti/LDSC_files/eur_w_ld_chr/ 
+
+Beginning analysis at Mon Oct 12 15:18:30 2026
+Reading summary statistics from /vast/palmer/scratch/polimanti/ejm96/basophils_rg_sanity/basophils_panukb_GRCh38.sumstats.gz ...
+Read summary statistics for 1150253 SNPs.
+Reading reference panel LD Score from /gpfs/gibbs/pi/polimanti/LDSC_files/eur_w_ld_chr/[1-22] ... (ldscore_fromlist)
+Read reference panel LD Scores for 1290028 SNPs.
+Removing partitioned LD Scores with zero variance.
+Reading regression weight LD Score from /gpfs/gibbs/pi/polimanti/LDSC_files/eur_w_ld_chr/[1-22] ... (ldscore_fromlist)
+Read regression weight LD Scores for 1290028 SNPs.
+After merging with reference panel LD, 1144450 SNPs remain.
+After merging with regression SNP LD, 1144450 SNPs remain.
+Computing rg for phenotype 2/2
+Reading summary statistics from /vast/palmer/scratch/polimanti/ejm96/basophils_rg_sanity/basophils_finngen_GRCh38_corrected.sumstats.gz ...
+Read summary statistics for 1217311 SNPs.
+After merging with summary statistics, 1144450 SNPs remain.
+1134074 SNPs with valid alleles.
+
+Heritability of phenotype 1
+---------------------------
+Total Observed scale h2: 0.0244 (0.0027)
+Lambda GC: 1.3
+Mean Chi^2: 1.3705
+Intercept: 1.1733 (0.0107)
+Ratio: 0.4677 (0.0289)
+
+Heritability of phenotype 2/2
+-----------------------------
+Total Observed scale h2: 0.1093 (0.0328)
+Lambda GC: 1.3859
+Mean Chi^2: 1.7267
+Intercept: 1.3442 (0.127)
+Ratio: 0.4737 (0.1748)
+
+Genetic Covariance
+------------------
+Total Observed scale gencov: 0.0261 (0.0042)
+Mean z1*z2: 0.1599
+Intercept: 0.0221 (0.0149)
+
+Genetic Correlation
+-------------------
+Genetic Correlation: 0.5051 (0.0512)
+Z-score: 9.8643
+P: 5.9432e-23
+
+
+Summary of Genetic Correlation Results
+                                                                                          p1                                                                                                      p2     rg     se      z      p  h2_obs  h2_obs_se  h2_int  h2_int_se  gcov_int  gcov_int_se
+/vast/palmer/scratch/polimanti/ejm96/basophils_rg_sanity/basophils_panukb_GRCh38.sumstats.gz /vast/palmer/scratch/polimanti/ejm96/basophils_rg_sanity/basophils_finngen_GRCh38_corrected.sumstats.gz 0.5051 0.0512 9.8643 0.0000  0.1093     0.0328  1.3442     0.1270    0.0221       0.0149
+
+Analysis finished at Mon Oct 12 15:18:43 2026
+Total time elapsed: 12.94s

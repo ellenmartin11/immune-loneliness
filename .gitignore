@@ -1,0 +1,64 @@
+# Data directories
+data/
+datasets/
+sumstats/
+raw_data/
+processed_data/
+
+# Analysis outputs
+results/ldsc_finngen_pairwise
+results/ldsc_finngen_results
+results/pairwise_ldsc
+output/
+outputs/
+tmp/
+temp/
+
+# SLURM logs
+logs/
+*.out
+*.err
+slurm-*.out
+
+# Large/common genomics files
+*.bed
+*.bim
+*.fam
+*.pgen
+*.pvar
+*.psam
+*.vcf
+*.vcf.gz
+*.bcf
+*.bgen
+*.sample
+*.sumstats
+*.sumstats.gz
+*.bgz
+
+# Compressed/downloaded datasets
+*.gz
+*.zip
+*.tar
+*.tar.gz
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+renv
+r_libs
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# macOS
+.DS_Store
+
+# Credentials / secrets
+.env
+*.key
+*.pem

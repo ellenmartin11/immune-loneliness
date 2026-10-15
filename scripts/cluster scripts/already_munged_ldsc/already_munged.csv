@@ -1,0 +1,26 @@
+phenotype,source,path
+Asthma,FinnGen,/gpfs/gibbs/pi/polimanti/FinnGen_R12/munged/ASTHMA_NAS.sumstats.gz
+Allergic rhinitis FinnGen,FinnGen,/gpfs/gibbs/pi/polimanti/FinnGen_R12/munged/ALLERG_RHINITIS.sumstats.gz
+Crohn disease FinnGen,FinnGen,/gpfs/gibbs/pi/polimanti/FinnGen_R12/munged/CROHN_ARTHR.sumstats.gz
+Ulcerative colitis FinnGen,FinnGen,/gpfs/gibbs/pi/polimanti/FinnGen_R12/munged/K11_UC_STRICT2.sumstats.gz
+Obesity FinnGen,FinnGen,/gpfs/gibbs/pi/polimanti/FinnGen_R12/munged/E4_OBESITY.sumstats.gz
+Depression FinnGen,FinnGen,/gpfs/gibbs/pi/polimanti/FinnGen_R12/munged/F5_DEPRESSIO.sumstats.gz
+Alcohol Dependence FinnGen,FinnGen,/gpfs/gibbs/pi/polimanti/FinnGen_R12/munged/F5_ALCOHOL_DEPENDENCE.sumstats.gz
+BMI FinnGen,FinnGen,/gpfs/gibbs/pi/polimanti/FinnGen_R12/munged/BMI_IRN.sumstats.gz
+Hypothyroidism FinnGen,FinnGen,/gpfs/gibbs/pi/polimanti/FinnGen_R12/munged/E4_HYTHY_AI_STRICT.sumstats.gz
+Smoking Dependency FinnGen,FinnGen,/gpfs/gibbs/pi/polimanti/FinnGen_R12/munged/SMOKING_DEPEND.sumstats.gz
+Type 2 Diabetes FinnGen,FinnGen,/gpfs/gibbs/pi/polimanti/FinnGen_R12/munged/T2D_WIDE.sumstats.gz
+Schizophrenia or Delusion FinnGen,FinnGen,/gpfs/gibbs/pi/polimanti/FinnGen_R12/munged/KRA_PSY_SCHIZODEL_EXMORE.sumstats.gz
+Schizophrenia PGC,PGC,/gpfs/gibbs/pi/polimanti/SUMMARY.STATISTICS/scz_2022/munged.EUR.scz2022.sumstats
+Albumin PanUKB,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_biomarkers-30600-both_sexes-irnt.tsv.sumstats.gz
+Basophil Count PanUKB,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_continuous-30160-both_sexes.tsv.sumstats.gz
+Eosinophil Count PanUKB,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_continuous-30150-both_sexes-irnt.tsv.sumstats.gz
+Monocytes PanUKB,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_continuous-30130-both_sexes-irnt.tsv.sumstats.gz
+Neutrophils PanUKB,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_continuous-30140-both_sexes-irnt.tsv.sumstats.gz
+Platelet Count PanUKB,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_continuous-30080-both_sexes-irnt.tsv.sumstats.gz
+Sleep Duration PanUKB,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_continuous-1160-both_sexes.tsv.sumstats.gz
+Loneliness isolation PanUKB,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_categorical-2020-both_sexes-2020.tsv.sumstats.gz
+Income PanUKB,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_continuous-738-both_sexes.tsv.sumstats.gz
+Alcohol Intake Frequency,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_continuous-1558-both_sexes.tsv.sumstats.gz
+Cigarettes Per Day PanUKB,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_continuous-Smoking-both_sexes-CPD_combined_irnt.tsv.sumstats.gz
+Hypertension PanUKB,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_categorical-20002-both_sexes-1065.tsv.sumstats.gz
