@@ -66,6 +66,7 @@ lymph_data <- fread(lymph$`file location`)
 head(lymph_data)
 colnames(lymph_data)
 
+# doesn't have rsid, needs to lookup rsid using Build (GRCh37)
 ###########################
 # CLEANING PGC PHENOTYPES #
 ###########################

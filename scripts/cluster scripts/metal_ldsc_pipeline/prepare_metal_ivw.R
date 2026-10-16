@@ -123,6 +123,10 @@ panukb_batch_rows <- suppressWarnings(as.integer(Sys.getenv("METAL_CHUNK_ROWS", 
 if (is.na(panukb_batch_rows) || panukb_batch_rows < 1L) {
   stop("METAL_CHUNK_ROWS must be a positive integer.")
 }
+finngen_batch_rows <- suppressWarnings(as.integer(Sys.getenv("METAL_FINGEN_CHUNK_ROWS", "100000")))
+if (is.na(finngen_batch_rows) || finngen_batch_rows < 1L) {
+  stop("METAL_FINGEN_CHUNK_ROWS must be a positive integer.")
+}
 
 prepare_panukb_batch <- function(dt, n_value, phenotype, lookup_path, chain_file) {
   get_batch <- function(choices) {
@@ -211,15 +215,46 @@ prepare_panukb_batch <- function(dt, n_value, phenotype, lookup_path, chain_file
 
 prepare_panukb_in_batches <- function(path, header, select, n_value, phenotype, out_path) {
   info <- file.info(path)
-  signature <- list(version = 2L, path = normalizePath(path), size = info$size,
-                    mtime = as.numeric(info$mtime), header = header, select = select,
-                    n = n_value, batch_rows = panukb_batch_rows,
-                    mungesumstats = as.character(utils::packageVersion("MungeSumstats")))
+  signature_fields <- list(path = normalizePath(path), size = info$size,
+                           mtime = as.numeric(info$mtime), header = header, select = select,
+                           n = n_value, batch_rows = panukb_batch_rows,
+                           mungesumstats = as.character(utils::packageVersion("MungeSumstats")))
   signature_file <- tempfile()
   on.exit(unlink(signature_file), add = TRUE)
-  writeBin(serialize(signature, NULL), signature_file)
-  cache_key <- unname(tools::md5sum(signature_file))
-  cache_dir <- file.path(out_dir, "batch_cache", safe_name(phenotype), cache_key)
+  phenotype_cache_dir <- file.path(out_dir, "batch_cache", safe_name(phenotype))
+  dir.create(phenotype_cache_dir, recursive = TRUE, showWarnings = FALSE)
+
+  # Earlier script uploads used signature versions 2 and 3. Check those exact
+  # cache keys before creating a new folder, so completed work survives script
+  # replacement while still requiring the same input and processing settings.
+  signature_versions <- 1:3
+  cache_keys <- vapply(signature_versions, function(version) {
+    writeBin(serialize(c(list(version = as.integer(version)), signature_fields), NULL),
+             signature_file)
+    unname(tools::md5sum(signature_file))
+  }, character(1))
+  candidate_dirs <- file.path(phenotype_cache_dir, cache_keys)
+  candidate_exists <- dir.exists(candidate_dirs)
+  completed_counts <- vapply(candidate_dirs, function(candidate) {
+    if (!dir.exists(candidate)) return(0L)
+    length(Sys.glob(file.path(candidate, "chunk_*.tsv.gz"))) +
+      length(Sys.glob(file.path(candidate, "chunk_*.empty")))
+  }, integer(1))
+  reusable <- which(candidate_exists & completed_counts > 0L)
+  if (length(reusable)) {
+    # Prefer the current key on ties; otherwise continue from the cache with
+    # the most completed batches among the matching signatures.
+    best <- reusable[order(completed_counts[reusable],
+                           signature_versions[reusable] == 2L, decreasing = TRUE)][[1L]]
+    cache_key <- cache_keys[[best]]
+    message("Reusing compatible cache folder for ", phenotype, ": ",
+            candidate_dirs[[best]], " (", completed_counts[[best]], " completed batches)")
+  } else {
+    cache_key <- cache_keys[[which(signature_versions == 2L)]]
+    message("No compatible completed cache found for ", phenotype,
+            "; starting a new cache at ", file.path(phenotype_cache_dir, cache_key))
+  }
+  cache_dir <- file.path(phenotype_cache_dir, cache_key)
   dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
   chain_dir <- file.path(out_dir, "batch_cache", "reference")
   dir.create(chain_dir, recursive = TRUE, showWarnings = FALSE)
@@ -294,8 +329,11 @@ prepare_panukb_in_batches <- function(path, header, select, n_value, phenotype, 
     if (cached) {
       message("Reusing cached PanUKB batch ", chunk_number, " for ", phenotype)
     } else {
+      # fread assigns col.names after applying select, so provide the selected
+      # names while keeping select_idx relative to the full source row.
       dt_chunk <- fread(text = paste(lines, collapse = "\n"), sep = "\t", header = FALSE,
-                        col.names = input_header[select_idx], select = select_idx, showProgress = FALSE)
+                        col.names = input_header[select_idx], select = select_idx, showProgress = FALSE,
+                        check.names = FALSE)
       ready <- prepare_panukb_batch(dt_chunk, n_value, phenotype, lookup_path, chain_file)
       rm(dt_chunk)
       if (nrow(ready)) {
@@ -318,7 +356,10 @@ prepare_panukb_in_batches <- function(path, header, select, n_value, phenotype, 
   if (!length(chunk_paths)) stop("No usable PanUKB variants remained for ", phenotype)
 
   output_con <- gzfile(out_path, open = "wt")
-  on.exit(if (isOpen(output_con)) close(output_con), add = TRUE)
+  output_open <- TRUE
+  on.exit(if (output_open) {
+    try(close(output_con), silent = TRUE)
+  }, add = TRUE)
   header_written <- FALSE
   variants <- 0L
   for (chunk_path in chunk_paths) {
@@ -336,6 +377,9 @@ prepare_panukb_in_batches <- function(path, header, select, n_value, phenotype, 
     rm(chunk_lines)
   }
   close(output_con)
+  output_open <- FALSE
+  if (!variants) stop("PanUKB batch preparation produced no usable rows for ", phenotype,
+                      ". Check the selected source columns and coordinate/effect fields.")
   ids <- fread(out_path, select = "SNP", showProgress = FALSE)$SNP
   duplicate_ids <- unique(ids[duplicated(ids) | duplicated(ids, fromLast = TRUE)])
   duplicate_rows_removed <- 0L
@@ -372,6 +416,201 @@ prepare_panukb_in_batches <- function(path, header, select, n_value, phenotype, 
        duplicate_rows_removed = duplicate_rows_removed, rows_read = total_rows)
 }
 
+# Stream large FinnGen inputs too, especially lab-value files without rsIDs.
+# Only one source chunk and its coordinate lookup are held in memory at a time.
+prepare_finngen_in_batches <- function(path, header, select, n_value, phenotype, out_path) {
+  info <- file.info(path)
+  signature_fields <- list(path = normalizePath(path), size = info$size,
+                           mtime = as.numeric(info$mtime), header = header,
+                           select = select, n = n_value,
+                           batch_rows = finngen_batch_rows,
+                           mungesumstats = as.character(utils::packageVersion("MungeSumstats")))
+  signature_path <- tempfile(tmpdir = out_dir)
+  on.exit(unlink(signature_path), add = TRUE)
+  trait_cache_dir <- file.path(out_dir, "batch_cache", safe_name(phenotype))
+  dir.create(trait_cache_dir, recursive = TRUE, showWarnings = FALSE)
+
+  # Search prior cache-signature versions so rerunning the Slurm job can resume
+  # completed chunks even if the script itself has been replaced.
+  signature_versions <- 1:3
+  cache_keys <- vapply(signature_versions, function(version) {
+    writeBin(serialize(c(list(version = as.integer(version)), signature_fields), NULL),
+             signature_path)
+    unname(tools::md5sum(signature_path))
+  }, character(1))
+  candidate_dirs <- file.path(trait_cache_dir, cache_keys)
+  completed_counts <- vapply(candidate_dirs, function(candidate) {
+    if (!dir.exists(candidate)) return(0L)
+    length(Sys.glob(file.path(candidate, "chunk_*.tsv.gz"))) +
+      length(Sys.glob(file.path(candidate, "chunk_*.empty")))
+  }, integer(1))
+  reusable <- which(dir.exists(candidate_dirs) & completed_counts > 0L)
+  if (length(reusable)) {
+    best <- reusable[order(completed_counts[reusable],
+                           signature_versions[reusable] == 1L, decreasing = TRUE)][[1L]]
+    cache_key <- cache_keys[[best]]
+    message("Reusing compatible FinnGen cache for ", phenotype, ": ",
+            candidate_dirs[[best]], " (", completed_counts[[best]], " completed batches)")
+  } else {
+    cache_key <- cache_keys[[1L]]
+    message("No completed FinnGen cache found for ", phenotype,
+            "; starting at ", file.path(trait_cache_dir, cache_key))
+  }
+  cache_dir <- file.path(trait_cache_dir, cache_key)
+  dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+
+  input_con <- if (grepl("\\.gz$", path, ignore.case = TRUE)) gzfile(path, "rt") else file(path, "rt")
+  on.exit(try(close(input_con), silent = TRUE), add = TRUE)
+  header_line <- readLines(input_con, n = 1L, warn = FALSE)
+  if (!length(header_line)) stop("Could not read FinnGen header for ", phenotype)
+  raw_header <- trimws(strsplit(sub("\\r$", "", header_line), "\t", fixed = TRUE)[[1L]])
+  raw_header[[1L]] <- sub("^\\ufeff", "", raw_header[[1L]])
+  selected_indices <- match(norm(select), norm(raw_header))
+  if (anyNA(selected_indices)) {
+    stop("FinnGen header changed while opening ", phenotype, ". Expected: ",
+         paste(select, collapse = ", "), "; observed: ", paste(raw_header, collapse = ", "))
+  }
+
+  lookup_path <- tempfile(tmpdir = out_dir, fileext = ".tsv.gz")
+  on.exit(unlink(lookup_path), add = TRUE)
+  chunk_paths <- character()
+  chunk_number <- 0L
+  total_rows <- 0L
+  repeat {
+    lines <- readLines(input_con, n = finngen_batch_rows, warn = FALSE)
+    if (!length(lines)) break
+    chunk_number <- chunk_number + 1L
+    total_rows <- total_rows + length(lines)
+    chunk_path <- file.path(cache_dir, sprintf("chunk_%06d.tsv.gz", chunk_number))
+    empty_path <- file.path(cache_dir, sprintf("chunk_%06d.empty", chunk_number))
+    cached <- file.exists(empty_path) || (file.exists(chunk_path) &&
+      file.info(chunk_path)$size > 0 &&
+      identical(as.integer(system2("gzip", c("-t", chunk_path), stdout = FALSE, stderr = FALSE)), 0L))
+    if (cached) {
+      message("Reusing cached FinnGen batch ", chunk_number, " for ", phenotype)
+    } else {
+      dt <- fread(text = paste(lines, collapse = "\n"), sep = "\t", header = FALSE,
+                  col.names = raw_header[selected_indices], select = selected_indices,
+                  check.names = FALSE, showProgress = FALSE)
+      n <- nrow(dt)
+      get_batch <- function(choices) {
+        column <- find_col(names(dt), choices)
+        if (is.null(column)) NULL else dt[[column]]
+      }
+      chr <- get_batch(c("CHR", "chromosome", "chrom", "#chrom", "chr"))
+      bp <- as_num(get_batch(c("BP", "POS", "base_pair_location", "pos", "position")))
+      raw_id <- get_batch(c("rs_id", "rsids", "rsid", "dbsnp", "SNP", "MarkerName", "variant_id", "variant", "ID"))
+      id <- if (is.null(raw_id)) rep(NA_character_, n) else normalize_rsid(raw_id)
+      if (all(c("alt", "ref") %in% norm(names(dt)))) {
+        a1 <- get_batch("ALT")
+        a2 <- get_batch("REF")
+      } else {
+        a1 <- get_batch(c("A1", "effect_allele", "Allele1", "ALT", "inc_allele"))
+        a2 <- get_batch(c("A2", "other_allele", "Allele2", "REF", "non_effect_allele"))
+      }
+      beta <- as_num(get_batch(c("BETA", "beta", "Effect", "B", "log_odds")))
+      se <- as_num(get_batch(c("SE", "standard_error", "sebeta", "StdErr", "stderr")))
+      p <- as_num(get_batch(c("P", "p_value", "pval", "P.value", "Pvalue")))
+      if (is.null(beta) || is.null(se) || is.null(a1) || is.null(a2)) {
+        stop("Missing effect, SE, or allele fields in FinnGen batch ", chunk_number,
+             " for ", phenotype)
+      }
+      if (is.null(p)) p <- 2 * pnorm(-abs(beta / se))
+      p[!is.na(p) & p <= 0] <- .Machine$double.xmin
+      batch_n <- as_num(n_value)
+      if (length(batch_n) != 1L || is.na(batch_n)) batch_n <- NA_real_
+      out <- data.table(SNP = id,
+                        CHR = if (is.null(chr)) rep(NA_character_, n) else as.character(chr),
+                        BP = if (is.null(bp)) rep(NA_real_, n) else bp,
+                        A1 = as.character(a1), A2 = as.character(a2),
+                        BETA = beta, SE = se, P = p, N = rep(batch_n, n))
+      out <- out[!is.na(A1) & nzchar(A1) & !is.na(A2) & nzchar(A2) &
+                   is.finite(BETA) & is.finite(SE) & SE > 0 &
+                   is.finite(P) & P > 0 & P <= 1]
+      missing_id <- is.na(out$SNP) | !grepl("^rs[0-9]+$", out$SNP, ignore.case = TRUE)
+      if (any(missing_id)) {
+        lookup <- data.table::copy(out[missing_id])
+        if (anyNA(lookup$CHR) || anyNA(lookup$BP) || any(!is.finite(lookup$BP))) {
+          stop("FinnGen coordinate lookup needs valid chromosome and position in batch ",
+               chunk_number, " for ", phenotype)
+        }
+        lookup[, SNP := NULL]
+        mapped <- MungeSumstats::format_sumstats(
+          path = lookup, ref_genome = "GRCh38", dbSNP = 155,
+          snp_ids_are_rs_ids = FALSE, return_data = TRUE,
+          return_format = "data.table", save_path = lookup_path,
+          force_new = TRUE, log_folder_ind = FALSE, sort_coordinates = FALSE
+        )
+        mapped <- as.data.table(mapped)
+        required_mapped <- c("SNP", "CHR", "BP", "A1", "A2", "BETA", "SE", "P")
+        if (!all(required_mapped %in% names(mapped))) {
+          stop("MungeSumstats returned unexpected fields for FinnGen batch ",
+               chunk_number, " of ", phenotype, ": ", paste(names(mapped), collapse = ", "))
+        }
+        if (!"N" %in% names(mapped)) mapped[, N := batch_n]
+        mapped <- mapped[!is.na(SNP) & grepl("^rs[0-9]+$", SNP, ignore.case = TRUE)]
+        out <- data.table::rbindlist(list(out[!missing_id], mapped), fill = TRUE, use.names = TRUE)
+        rm(lookup, mapped)
+      }
+      out <- out[!is.na(SNP) & grepl("^rs[0-9]+$", SNP, ignore.case = TRUE)]
+      out <- out[, .(SNP, CHR, BP, A1, A2, BETA, SE, P, N)]
+      if (nrow(out)) {
+        fwrite(out, chunk_path, sep = "\t", na = "NA")
+        if (file.exists(empty_path)) unlink(empty_path)
+      } else {
+        file.create(empty_path)
+        if (file.exists(chunk_path)) unlink(chunk_path)
+      }
+      rm(dt, lines, out)
+      invisible(gc())
+    }
+    if (file.exists(chunk_path)) chunk_paths <- c(chunk_paths, chunk_path)
+    rm(lines)
+    if (chunk_number %% 10L == 0L) {
+      message("Processed FinnGen batch ", chunk_number, " for ", phenotype,
+              " (", total_rows, " source rows)")
+    }
+  }
+  if (!length(chunk_paths)) stop("No rsID-mapped FinnGen rows were produced for ", phenotype)
+
+  # A marker can occur more than once across FinnGen batches. Exclude every
+  # row for duplicated rsIDs rather than selecting an arbitrary association.
+  ids_by_chunk <- lapply(chunk_paths, function(chunk_path) {
+    fread(chunk_path, select = "SNP", showProgress = FALSE)$SNP
+  })
+  ids <- unlist(ids_by_chunk, use.names = FALSE)
+  rm(ids_by_chunk)
+  duplicate_ids <- unique(ids[duplicated(ids) | duplicated(ids, fromLast = TRUE)])
+  if (length(duplicate_ids)) {
+    message("Excluding all rows for ", length(duplicate_ids),
+            " duplicated FinnGen rsIDs in ", phenotype,
+            "; examples: ", paste(head(duplicate_ids, 5L), collapse = ", "))
+  }
+
+  output_con <- gzfile(out_path, open = "wt")
+  output_open <- TRUE
+  on.exit(if (output_open) try(close(output_con), silent = TRUE), add = TRUE)
+  header_written <- FALSE
+  retained_rows <- 0L
+  for (chunk_path in chunk_paths) {
+    chunk_dt <- fread(chunk_path, showProgress = FALSE)
+    if (length(duplicate_ids)) chunk_dt <- chunk_dt[!SNP %chin% duplicate_ids]
+    if (nrow(chunk_dt)) {
+      write.table(chunk_dt, file = output_con, sep = "\t", quote = FALSE,
+                  row.names = FALSE, col.names = !header_written, na = "NA")
+      retained_rows <- retained_rows + nrow(chunk_dt)
+      header_written <- TRUE
+    }
+    rm(chunk_dt)
+  }
+  close(output_con)
+  output_open <- FALSE
+  if (!retained_rows) stop("No unique FinnGen rsIDs remain after duplicate removal for ", phenotype)
+  list(path = out_path, variants = retained_rows,
+       unique_rsids = length(ids) - sum(ids %chin% duplicate_ids), rows_read = total_rows,
+       duplicate_rsids_removed = length(duplicate_ids))
+}
+
 cleaned <- list()
 for (i in seq_len(nrow(ref))) {
   phenotype <- as.character(ref[[ph_col]][[i]])
@@ -384,6 +623,8 @@ for (i in seq_len(nrow(ref))) {
   nms <- norm(header)
   is_panukb <- grepl("pan[ _-]?ukb", paste(ref[[source_col]][[i]], ref[[cohort_col]][[i]]),
                      ignore.case = TRUE)
+  is_finngen <- grepl("finngen", paste(phenotype, ref[[source_col]][[i]], ref[[cohort_col]][[i]]),
+                      ignore.case = TRUE)
   has_eur_effect_stats <- is_panukb && all(norm(c("beta_EUR", "se_EUR", "pval_EUR")) %in% nms)
   beta_choices <- if (has_eur_effect_stats) c("beta_EUR", "BETA", "beta", "beta_meta", "Effect", "B", "log_odds") else c("BETA", "beta", "beta_meta", "beta_meta_hq", "Effect", "B", "log_odds")
   se_choices <- if (has_eur_effect_stats) c("se_EUR", "SE", "standard_error", "sebeta", "se_meta", "StdErr", "stderr") else c("SE", "standard_error", "sebeta", "se_meta", "se_meta_hq", "StdErr", "stderr")
@@ -440,6 +681,31 @@ for (i in seq_len(nrow(ref))) {
     next
   }
 
+  if (is_finngen) {
+    sample_n <- as_num(ref[[n_col]][[i]])
+    if (is.null(sample_n) || !length(sample_n) || is.na(sample_n[[1L]])) {
+      sample_n <- NA_real_
+    } else {
+      sample_n <- sample_n[[1L]]
+    }
+    out_path <- file.path(input_dir, paste0(safe_name(phenotype), ".tsv.gz"))
+    batch_result <- prepare_finngen_in_batches(
+      path = path, header = header, select = select, n_value = sample_n,
+      phenotype = phenotype, out_path = out_path
+    )
+    cleaned[[phenotype]] <- list(
+      path = normalizePath(out_path), n = sample_n,
+      variants = batch_result$variants, unique_rsids = batch_result$unique_rsids,
+      cohort = as.character(ref[[cohort_col]][[i]]),
+      source = as.character(ref[[source_col]][[i]]), build = "GRCh38"
+    )
+    message("Prepared FinnGen in batches: ", phenotype, " (", batch_result$variants,
+            " variants; ", batch_result$rows_read, " input rows; cache: ",
+            file.path(out_dir, "batch_cache", safe_name(phenotype)),
+            "; excluded duplicated rsIDs: ", batch_result$duplicate_rsids_removed, ")")
+    next
+  }
+
   dt <- fread(path, select = select, showProgress = TRUE, check.names = FALSE)
   get <- function(choices) {
     c_name <- find_col(names(dt), choices)
@@ -461,8 +727,6 @@ for (i in seq_len(nrow(ref))) {
   beta <- as_num(get(beta_choices))
   se <- as_num(get(se_choices))
   p <- as_num(get(p_choices))
-  is_finngen <- grepl("finngen", paste(phenotype, ref[[source_col]][[i]], ref[[cohort_col]][[i]]),
-                      ignore.case = TRUE)
   if (is.null(beta) || is.null(se)) stop("METAL IVW requires effect and SE columns for ", phenotype)
   if (is.null(a1) || is.null(a2)) stop("METAL IVW requires effect and other alleles for ", phenotype)
   if (is.null(p)) p <- 2 * pnorm(-abs(beta / se))
@@ -613,19 +877,27 @@ for (i in seq_len(nrow(ref))) {
   out <- out[, .(SNP, A1, A2, BETA, SE, P, N)]
   if (!nrow(out)) stop("No valid variant rows remain after cleaning ", phenotype,
                        ". Check that the source includes usable rsIDs, effect/other alleles, beta, and SE.")
-  n_rsid <- nrow(out)
-  n_unique_rsid <- uniqueN(out$SNP)
-  # Duplicate rsIDs can represent ambiguous/multiallelic rows. Stop rather than
-  # silently selecting one effect or letting METAL count a marker twice.
-  if (anyDuplicated(out$SNP)) {
-    dup <- out[, .N, by = SNP][N > 1L, head(SNP, 5L)]
-    stop("Duplicate rsIDs in ", phenotype, " (examples: ", paste(dup, collapse = ", "),
-         "). Resolve these in the source or add an explicit deduplication rule.")
+  # Exclude every row for duplicated rsIDs. Keeping one row arbitrarily could
+  # retain the wrong allele/effect when a marker is multi-allelic or repeated.
+  duplicate_ids <- out[, .N, by = SNP][N > 1L, SNP]
+  if (length(duplicate_ids)) {
+    duplicate_rows <- out[SNP %chin% duplicate_ids, .N]
+    message(
+      "Removing ", duplicate_rows, " rows across ", length(duplicate_ids),
+      " duplicated rsIDs for ", phenotype,
+      "; examples: ", paste(head(duplicate_ids, 5L), collapse = ", ")
+    )
+    out <- out[!SNP %chin% duplicate_ids]
+  }
+
+  if (nrow(out) == 0L) {
+    stop("No variants remain for ", phenotype,
+         " after removing duplicated rsIDs and invalid summary-statistic rows.")
   }
   out_path <- file.path(input_dir, paste0(safe_name(phenotype), ".tsv.gz"))
   fwrite(out, out_path, sep = "\t", na = "NA")
   cleaned[[phenotype]] <- list(path = normalizePath(out_path), n = n_value,
-                               variants = n_rsid, unique_rsids = n_unique_rsid,
+                               variants = nrow(out), unique_rsids = uniqueN(out$SNP),
                                cohort = as.character(ref[[cohort_col]][[i]]), source = as.character(ref[[source_col]][[i]]),
                                build = if (is_panukb) "GRCh38 (lifted from GRCh37)" else "unchanged")
   message("Prepared ", phenotype, ": ", nrow(out), " variants with rsIDs; coordinate-only rows were excluded")

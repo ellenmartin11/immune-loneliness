@@ -34,9 +34,14 @@ SCRIPT_DIR="${PROJECT_DIR}/scripts/cluster scripts/metal_ldsc_pipeline"
 MAPPING_CSV="https://docs.google.com/spreadsheets/d/1tJhUVb1uH2Eku4P_pMAYwJCagoFiO_nYxyqmdHUgAFk/export?format=csv"
 OUT_DIR="/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/metal_ivw"
 METAL_BIN="${METAL_BIN:-$(command -v metal || command -v METAL || true)}"
+METAL_CHUNK_ROWS="${METAL_CHUNK_ROWS:-250000}"
+METAL_FINGEN_CHUNK_ROWS="${METAL_FINGEN_CHUNK_ROWS:-100000}"
+export METAL_CHUNK_ROWS METAL_FINGEN_CHUNK_ROWS
 
 mkdir -p "${OUT_DIR}"
 [[ -x "${METAL_BIN}" ]] || { echo "Cannot find an executable METAL binary after loading its module. Set METAL_BIN to its full path." >&2; exit 1; }
 echo "METAL executable: ${METAL_BIN}"
+echo "PanUKB batch size: ${METAL_CHUNK_ROWS} rows"
+echo "FinnGen batch size: ${METAL_FINGEN_CHUNK_ROWS} rows"
 echo "METAL preparation script: ${SCRIPT_DIR}/prepare_metal_ivw.R"
 Rscript "${SCRIPT_DIR}/prepare_metal_ivw.R" "${MAPPING_CSV}" "${OUT_DIR}" "${METAL_BIN}"

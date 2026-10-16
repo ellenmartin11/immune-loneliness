@@ -4,7 +4,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
-#SBATCH --mem=64G
+#SBATCH --mem=32G
 #SBATCH --time=12:00:00
 #SBATCH --output=metal_primary_clean_%j.out
 #SBATCH --error=metal_primary_clean_%j.err
@@ -33,6 +33,8 @@ SCRIPT_DIR="${PROJECT_DIR}/scripts/cluster scripts/metal_ldsc_pipeline"
 MAPPING_CSV="https://docs.google.com/spreadsheets/d/1tJhUVb1uH2Eku4P_pMAYwJCagoFiO_nYxyqmdHUgAFk/export?format=csv"
 ALREADY_MUNGED_CSV="${SCRIPT_DIR}/already_munged.csv"
 OUT_DIR="/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean"
+CLEAN_CHUNK_ROWS="${CLEAN_CHUNK_ROWS:-250000}"
+export CLEAN_CHUNK_ROWS
 mkdir -p "${OUT_DIR}/tmp"
 export TMPDIR="${OUT_DIR}/tmp"
 
@@ -43,5 +45,6 @@ fi
 [[ -r "${ALREADY_MUNGED_CSV}" ]] || { echo "Cannot read ${ALREADY_MUNGED_CSV}" >&2; exit 1; }
 echo "Primary cleaner script: ${SCRIPT_DIR}/clean_sumstats.R"
 echo "Primary cleaner output: ${OUT_DIR}"
+echo "Coordinate-lookup batch size: ${CLEAN_CHUNK_ROWS} rows"
 Rscript "${SCRIPT_DIR}/clean_sumstats.R" \
   "${MAPPING_CSV}" "${OUT_DIR}" "${ALREADY_MUNGED_CSV}" "Primary"
