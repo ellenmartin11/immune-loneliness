@@ -1,0 +1,450 @@
+---
+title: "Endometriosis Substance MR"
+author: "Ellen Martin"
+date: "2026-09-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Accessing Data
+
+```{r restore environment, eval=TRUE}
+#install.packages("renv") #always needs to install since not a default cluster module
+Sys.getenv("OPENGWAS_JWT") != ""
+ieugwasr::user()
+Sys.setenv(LD_LIBRARY_PATH = "")
+system("rpm --version")
+
+setwd("/gpfs/gibbs/project/polimanti/ejm96/project") #main working directory where my renv lives
+renv::restore() #restores my env with all my packages - choose 1
+```
+
+```{r libraries and directories}
+filepath <- "/gpfs/gibbs/project/polimanti/ejm96/project"
+
+outPath <- file.path(filepath, "data", "processed")
+
+print(outPath)
+
+# Load libraries (should be installed in the renv)
+library(data.table)
+library(dplyr)
+library(biomaRt)
+library(httr2)
+library(jsonlite)
+library(TwoSampleMR)
+library(ieugwasr)
+
+```
+
+# Endo and PTU
+```{r reloading RDs}
+endo_qc <- readRDS(paste0(outPath, "/endo_qc.RData"))
+tobacco_qc <- readRDS(paste0(outPath, "/tobacco_qc.RData"))
+```
+
+### Mendelian Randomization (Endo and PTU)
+- between Endometriosis and Problematic Tobacco Use
+
+
+```{r harmonization and preprocessing}
+
+tobacco_clump <- tobacco_qc
+tobacco_clump$SNP <- tobacco_clump$rsID
+
+endo_clump <- endo_qc
+endo_clump$SNP <- endo_clump$rsID
+
+source(paste0(filepath, "/scripts/mr_preprocessing.R"))
+
+#endo to tobacco
+endo_to_tobacco <- harmonize_mr(
+  exposure_dat = endo_clump,
+  outcome_dat = tobacco_clump,
+  exposure_name = "endometriosis",
+  outcome_name = "tobacco use",
+  p_threshold = 5e-8
+)
+
+table(endo_to_tobacco$mr_keep) 
+attr(endo_to_tobacco, "log")
+
+#tobacco to endo
+tobacco_to_endo <- harmonize_mr(
+  exposure_dat = tobacco_clump,
+  outcome_dat = endo_clump,
+  exposure_name = "tobacco use",
+  outcome_name = "endometriosis",
+  p_threshold = 5e-8
+)
+
+table(tobacco_to_endo$mr_keep)
+attr(tobacco_to_endo, "log")
+
+```
+
+```{r clumping}
+# Endometriosis → Tobacco 
+endo_to_tobacco_clumped <- clump_mr(mr_dat = endo_to_tobacco) 
+length(endo_to_tobacco_clumped$SNP)  #28
+
+# Tobacco -> Endo 
+tobacco_to_endo_clumped <- clump_mr(mr_dat = tobacco_to_endo) 
+length(tobacco_to_endo_clumped$SNP)  #7
+```
+## Endometriosis to Tobacco Use MR
+
+### Main MR and IVW Estimates
+- MR egger near significant
+- IVW not (based on 28)
+
+```{r endo to toabcco MR}
+Results_endo_to_tobacco <- run_mr_pipeline(
+  clumped_dat = endo_to_tobacco_clumped,
+  analysis_name = "Endometriosis → Tobacco (GWS)"
+)
+
+knitr::kable(
+  as.data.frame(Results_endo_to_tobacco$mr),
+  "markdown"
+)
+
+ivw <- subset(
+  Results_endo_to_tobacco$mr,
+  method == "Inverse variance weighted"
+)
+
+ivw$ci_lower <- ivw$b - 1.96 * ivw$se
+ivw$ci_upper <- ivw$b + 1.96 * ivw$se
+
+ivw[, c("b", "se", "ci_lower", "ci_upper", "pval")]
+```
+
+### Heterogeneity, Pleiotropy and Egger
+
+- no evidence of heterogenetiy or pleiotropy
+- egger bootstrapping shows some sig snps
+
+```{r Heterogeneity Test}
+knitr::kable(
+  as.data.frame(Results_endo_to_tobacco$heterogeneity),
+  "markdown"
+)
+
+knitr::kable(
+  as.data.frame(Results_endo_to_tobacco$pleiotropy),
+  "markdown"
+)
+
+knitr::kable(
+  as.data.frame(Results_endo_to_tobacco$leaveoneout_ivw),
+  "markdown"
+)
+
+knitr::kable(
+  as.data.frame(Results_endo_to_tobacco$leaveoneout_egger),
+  "markdown"
+)
+
+knitr::kable(
+  as.data.frame(Results_endo_to_tobacco$leaveoneout_egger_bootstrap),
+  "markdown"
+)
+```
+
+## Tobacco -> Endometriosis
+### Main MR IVW Estimates
+- on 7 genome-wide signifiacnt SNPs
+
+
+
+```{r tobacco to endo MR}
+Results_tobacco_to_endo <- run_mr_pipeline(
+  clumped_dat = tobacco_to_endo_clumped,
+  analysis_name = "Tobacco → Endo (GWS)"
+)
+
+knitr::kable(
+  as.data.frame(Results_tobacco_to_endo$mr),
+  "markdown"
+)
+
+ivw <- subset(
+  Results_tobacco_to_endo$mr,
+  method == "Inverse variance weighted"
+)
+
+ivw$ci_lower <- ivw$b - 1.96 * ivw$se
+ivw$ci_upper <- ivw$b + 1.96 * ivw$se
+
+ivw[, c("b", "se", "ci_lower", "ci_upper", "pval")]
+```
+
+### Heterogeneity, Pleiotropy etc
+
+```{r Heterogeneity Test}
+knitr::kable(
+  as.data.frame(Results_tobacco_to_endo$heterogeneity),
+  "markdown"
+)
+
+knitr::kable(
+  as.data.frame(Results_tobacco_to_endo$pleiotropy),
+  "markdown"
+)
+
+knitr::kable(
+  as.data.frame(Results_tobacco_to_endo$leaveoneout_ivw),
+  "markdown"
+)
+
+knitr::kable(
+  as.data.frame(Results_tobacco_to_endo$leaveoneout_egger),
+  "markdown"
+)
+
+knitr::kable(
+  as.data.frame(Results_tobacco_to_endo$leaveoneout_egger_bootstrap),
+  "markdown"
+)
+```
+
+There is nominal evidence consistent with a positive causal effect, supported by directionally concordant weighted-median and leave-one-out results and no detected heterogeneity/pleiotropy, but the evidence remains limited by the small number of instruments and modest statistical significance.
+
+
+## Tobacco --> Endometriosis (Relaxed for Tobacco)
+
+```{r relaxed tobacco to endo harmonization}
+tobacco_clump <- tobacco_qc
+tobacco_clump$SNP <- tobacco_clump$rsID
+
+endo_clump <- endo_qc
+endo_clump$SNP <- endo_clump$rsID
+
+source(paste0(filepath, "/scripts/mr_preprocessing.R"))
+
+#tobacco to endo
+tobacco_to_endo_relaxed <- harmonize_mr(
+  exposure_dat = tobacco_clump,
+  outcome_dat = endo_clump,
+  exposure_name = "tobacco use",
+  outcome_name = "endometriosis",
+  p_threshold = 5e-7
+)
+
+table(tobacco_to_endo_relaxed$mr_keep)
+attr(tobacco_to_endo_relaxed, "log")
+```
+
+```{r tobacco to endo relaxed clumping}
+# Tobacco -> Endo  Relaxed
+tobacco_to_endo_relaxed_clumped <- clump_mr(mr_dat = tobacco_to_endo_relaxed) 
+length(tobacco_to_endo_relaxed_clumped$SNP)  #24
+```
+
+### Main MR Results (Tobacco to Endo Relaxed)
+
+```{r tobacco to endo MR relaex}
+Results_tobacco_to_endo <- run_mr_pipeline(
+  clumped_dat = tobacco_to_endo_relaxed_clumped,
+  analysis_name = "Tobacco → Endometriosis (GWS)"
+)
+
+knitr::kable(
+  as.data.frame(Results_tobacco_to_endo$mr),
+  "markdown"
+)
+
+ivw <- subset(
+  Results_tobacco_to_endo$mr,
+  method == "Inverse variance weighted"
+)
+
+ivw$ci_lower <- ivw$b - 1.96 * ivw$se
+ivw$ci_upper <- ivw$b + 1.96 * ivw$se
+
+ivw[, c("b", "se", "ci_lower", "ci_upper", "pval")]
+```
+### Heterogeneity, Pleiotropy (relaxed)
+
+```{r Heterogeneity Test}
+knitr::kable(
+  as.data.frame(Results_tobacco_to_endo$heterogeneity),
+  "markdown"
+)
+
+knitr::kable(
+  as.data.frame(Results_tobacco_to_endo$pleiotropy),
+  "markdown"
+)
+
+knitr::kable(
+  as.data.frame(Results_tobacco_to_endo$leaveoneout_ivw),
+  "markdown"
+)
+
+knitr::kable(
+  as.data.frame(Results_tobacco_to_endo$leaveoneout_egger),
+  "markdown"
+)
+
+knitr::kable(
+  as.data.frame(Results_tobacco_to_endo$leaveoneout_egger_bootstrap),
+  "markdown"
+)
+```
+
+Given the increase in statistical power (with more instruments, but weaker), there is less convincing evidence of a causal effect in either direction, despite evidence of genetic overlap. 
+
+# Endo and OUD
+
+```{r reloading RDs OUD}
+opioid_qc <- readRDS(paste0(outPath, "/opioid_qc.RData"))
+```
+
+```{r harmonization and preprocessing}
+
+opioid_clump <- opioid_qc
+opioid_clump$SNP <- opioid_clump$rsID
+
+#endo to opioid
+endo_to_opioid <- harmonize_mr(
+  exposure_dat = endo_clump,
+  outcome_dat = opioid_clump,
+  exposure_name = "endometriosis",
+  outcome_name = "opioid use",
+  p_threshold = 5e-8
+)
+
+table(endo_to_opioid$mr_keep) 
+attr(endo_to_opioid, "log")
+
+#opioid to endo
+opioid_to_endo <- harmonize_mr(
+  exposure_dat = opioid_clump,
+  outcome_dat = endo_clump,
+  exposure_name = "opioid use",
+  outcome_name = "endometriosis",
+  p_threshold = 5e-7 #only 2 instruments otherwise (at gws)
+)
+
+table(opioid_to_endo$mr_keep)
+attr(opioid_to_endo, "log")
+
+```
+
+```{r clumping endo and opioid}
+# Endometriosis → Opioid 
+endo_to_opioid_clumped <- clump_mr(mr_dat = endo_to_opioid) 
+length(endo_to_opioid_clumped$SNP)  #20
+
+# Opioid -> Endo (relaxed)
+opioid_to_endo_clumped <- clump_mr(mr_dat = opioid_to_endo) 
+length(opioid_to_endo_clumped$SNP)  #4
+```
+
+### Endo to Opioid MR
+```{r endo to opioid MR}
+Results_endo_to_opioid <- run_mr_pipeline(
+  clumped_dat = endo_to_opioid_clumped,
+  analysis_name = "Endometriosis → Opioid (GWS)"
+)
+
+knitr::kable(
+  as.data.frame(Results_endo_to_opioid$mr),
+  "markdown"
+)
+
+ivw <- subset(
+  Results_endo_to_opioid$mr,
+  method == "Inverse variance weighted"
+)
+
+ivw$ci_lower <- ivw$b - 1.96 * ivw$se
+ivw$ci_upper <- ivw$b + 1.96 * ivw$se
+
+ivw[, c("b", "se", "ci_lower", "ci_upper", "pval")]
+```
+
+```{r Heterogeneity Test}
+knitr::kable(
+  as.data.frame(Results_endo_to_opioid$heterogeneity),
+  "markdown"
+)
+
+knitr::kable(
+  as.data.frame(Results_endo_to_opioid$pleiotropy),
+  "markdown"
+)
+
+knitr::kable(
+  as.data.frame(Results_endo_to_opioid$leaveoneout_ivw),
+  "markdown"
+)
+
+knitr::kable(
+  as.data.frame(Results_endo_to_opioid$leaveoneout_egger),
+  "markdown"
+)
+
+knitr::kable(
+  as.data.frame(Results_endo_to_opioid$leaveoneout_egger_bootstrap),
+  "markdown"
+)
+```
+
+### Opioid to Endo MR
+
+```{r endo to opioid MR}
+Results_opioid_to_endo <- run_mr_pipeline(
+  clumped_dat = opioid_to_endo_clumped,
+  analysis_name = "Opioid --> Endometriosis (GWS)"
+)
+
+knitr::kable(
+  as.data.frame(Results_opioid_to_endo$mr),
+  "markdown"
+)
+
+ivw <- subset(
+  Results_opioid_to_endo$mr,
+  method == "Inverse variance weighted"
+)
+
+ivw$ci_lower <- ivw$b - 1.96 * ivw$se
+ivw$ci_upper <- ivw$b + 1.96 * ivw$se
+
+ivw[, c("b", "se", "ci_lower", "ci_upper", "pval")]
+```
+
+```{r Heterogeneity Test}
+knitr::kable(
+  as.data.frame(Results_opioid_to_endo$heterogeneity),
+  "markdown"
+)
+
+knitr::kable(
+  as.data.frame(Results_opioid_to_endo$pleiotropy),
+  "markdown"
+)
+
+knitr::kable(
+  as.data.frame(Results_opioid_to_endo$leaveoneout_ivw),
+  "markdown"
+)
+
+knitr::kable(
+  as.data.frame(Results_opioid_to_endo$leaveoneout_egger),
+  "markdown"
+)
+
+knitr::kable(
+  as.data.frame(Results_opioid_to_endo$leaveoneout_egger_bootstrap),
+  "markdown"
+)
+```
+
+No significant bidirectional causal effects between endometriosis and opioid use disorder, or between tobacco and endometriosis. 
