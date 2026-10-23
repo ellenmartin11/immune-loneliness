@@ -1,0 +1,9 @@
+---
+title: "AoU Observational Results"
+output: html_document
+---
+
+# Examining Observational/EHR Associations between Loneliness and Psychiatric and Immune Conditions
+
+### UCLA Loneliness Cohort Description
+- N UCLA Loneliness Scale = 290, 522
