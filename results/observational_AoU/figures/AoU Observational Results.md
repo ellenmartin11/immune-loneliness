@@ -168,6 +168,23 @@ output: html_document
 
 ***
 
+### Monocytes
+- Loneliness associated with increased monocyte count (slightly).
+- There are opposing effects between males and females, where loneliness especially increases monocytes among females, but decreases it for males
+- Significant loneliness x male sex interaction (b = -0.043, p < 0.001)
+
+![Opposinge effects of loneliness on biomarker levels between males and females](biomarkers_loneliness_income/monocytes_loneliness_emmeans_income.png)
+
+***
+
+### Triglycerides
+- Loneliness associated with increased triglycerides, particularly among males, and among males with higher income. 
+- Significant loneliness x male sex interaction (b = 0.022, p = 0.003) and sex x income interaction (b = 0.010, p = 0.003)
+
+![Loneliness associated with increased triglycerides, decreased with income](biomarkers_loneliness_income/triglycerides_loneliness_emmeans_income.png)
+
+
+
 
 
 
