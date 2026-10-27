@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --partition=day
-#SBATCH --job-name=metal_primary_clean
+#SBATCH --job-name=metal_primary_clean_v2
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=2
 #SBATCH --mem=64G
 #SBATCH --time=12:00:00
 #SBATCH --output=metal_primary_clean_%j.out
@@ -29,7 +29,7 @@ command -v Rscript >/dev/null 2>&1 || { echo "Rscript unavailable after loading 
 Rscript --version
 
 PROJECT_DIR="/gpfs/gibbs/project/polimanti/ejm96/immune"
-SCRIPT_DIR="${PROJECT_DIR}/scripts/cluster scripts/metal_ldsc_pipeline"
+SCRIPT_DIR="${PROJECT_DIR}/scripts/cluster scripts/metal_ldsc_pipeline/v2"
 MAPPING_CSV="https://docs.google.com/spreadsheets/d/1tJhUVb1uH2Eku4P_pMAYwJCagoFiO_nYxyqmdHUgAFk/export?format=csv"
 ALREADY_MUNGED_CSV="${SCRIPT_DIR}/already_munged.csv"
 OUT_DIR="/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean"
@@ -40,9 +40,9 @@ export CLEAN_CHUNK_ROWS
 # Multicore parallelization across phenotypes. The cleaner forks one worker
 # per trait (mc.preschedule=FALSE), so each worker holds one input file in
 # memory: keep CLEAN_CORES <= --cpus-per-task, and raise --mem if two large
-# sources (FinnGen, GWAS Catalog) land in the same wave. Set CLEAN_CORES=1
+# sources (FinnGen, GWAS Catalog) land in the same wave. Set CLEAN_CORES=2
 # to fall back to fully sequential processing.
-CLEAN_CORES="${CLEAN_CORES:-${SLURM_CPUS_PER_TASK:-1}}"  # defaults to --cpus-per-task (4)
+CLEAN_CORES="${CLEAN_CORES:-${SLURM_CPUS_PER_TASK:-1}}"  # defaults to --cpus-per-task (2)
 if [[ "${CLEAN_CORES}" -gt "${SLURM_CPUS_PER_TASK:-${CLEAN_CORES}}" ]]; then
   echo "CLEAN_CORES (${CLEAN_CORES}) exceeds --cpus-per-task; clamping." >&2
   CLEAN_CORES="${SLURM_CPUS_PER_TASK}"

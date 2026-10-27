@@ -1,5 +1,6 @@
 # 1_preprocess_sumstats.R is used to check the formatting of downloaded summary statisics, which is used to design the SLURM batch cleaning scripts
-# Part of sanity process, but does not actually need to be run for analyses to work. 
+# Part of sanity process, but does not actually need to be run for analyses to work. A lot of this is just useful for debugging wehn the batch cleaning goes wrong for specific sumstats. 
+
 # Author: Ellen Martin
 
 
@@ -67,6 +68,45 @@ head(lymph_data)
 colnames(lymph_data)
 
 # doesn't have rsid, needs to lookup rsid using Build (GRCh37)
+
+
+#########################
+# Checking Obesity Data #
+#########################
+library(dplyr)
+obesity <- ref %>%
+  filter(phenotype == "Obesity")
+
+obesity_data <- fread(obesity$`file location`)
+
+head(obesity_data)
+colnames(obesity_data)
+
+#########################
+# Type II Diabetes #
+#########################
+library(dplyr)
+T2D <- ref %>%
+  filter(phenotype == "Type 2 Diabetes")
+
+T2D_data <- fread(T2D$`file location`)
+
+head(T2D_data)
+colnames(T2D_data)
+
+# T2D has a really annoying typo Chromsome instead of Chromosome, added this to cleaning script
+
+##############################
+# CHECKING FinnGen Monocytes #
+##############################
+monocytes <- ref %>%
+  filter(phenotype == "Monocytes FinnGen")
+
+monocytes_data <- fread(monocytes$`file location`)
+
+head(monocytes_data)
+colnames(monocytes_data)
+
 ###########################
 # CLEANING PGC PHENOTYPES #
 ###########################
@@ -167,6 +207,8 @@ for (phenotype in other_primary) {
 #####################
 # UKBPPP Phenotypes #
 #####################
+
+# n.a since we are not using this anymore - we're using SCALLOP instead
 library(dplyr)
 ukbppp <- ref %>%
   filter(cohort== "UKBPPP")

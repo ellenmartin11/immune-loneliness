@@ -1,13 +1,14 @@
 #!/bin/bash
 #SBATCH --partition=day
 #SBATCH --job-name=metal_primary_ldsc
+#SBATCH --array=1-100%4
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=24G
+#SBATCH --mem=16G
 #SBATCH --time=12:00:00
-#SBATCH --output=metal_primary_ldsc_%j.out
-#SBATCH --error=metal_primary_ldsc_%j.err
+#SBATCH --output=metal_primary_ldsc_%A_%a.out
+#SBATCH --error=metal_primary_ldsc_%A_%a.err
 
 #################################################
 # please DO NOT remove the following two commands
@@ -35,7 +36,7 @@ CLEAN_MANIFEST="${BASE}/primary_clean/clean_manifest.tsv"
 PRIMARY_MANIFEST="${BASE}/primary_clean/primary_manifest.tsv"
 ALREADY_MUNGED_CSV="${SCRIPT_DIR}/already_munged.csv"
 MUNGED_DIR="${BASE}/munged_ldsc"
-RESULTS_DIR="${PROJECT_DIR}/results/pairwise_ldsc/metal_pipeline_${SLURM_JOB_ID:-manual}"
+RESULTS_DIR="${PROJECT_DIR}/results/pairwise_ldsc/metal_pipeline"
 
 LD_ENV="/gpfs/gibbs/project/polimanti/ejm96/project/ldsc_env"
 LDSC_DIR="/gpfs/gibbs/project/polimanti/ejm96/project/ldsc-CBIIT"
@@ -44,7 +45,7 @@ LIBFFI_LIB="/vast/palmer/apps/avx2/software/libffi/3.4.4-GCCcore-12.2.0/lib64"
 PYTHON="${LD_ENV}/bin/python"
 MUNGE_PY="${LDSC_DIR}/munge_sumstats.py"
 LDSC_PY="${LDSC_DIR}/ldsc.py"
-HM3_SNPLIST="/gpfs/gibbs/pi/polimanti/LDSC_files/w_hm3.snplist"
+HM3_SNPLIST="/gpfs/gibbs/pi/polimanti/LDSC_files/eur_w_ld_chr/w_hm3.snplist"
 REF_LD_CHR="/gpfs/gibbs/pi/polimanti/LDSC_files/eur_w_ld_chr/"
 W_LD_CHR="/gpfs/gibbs/pi/polimanti/LDSC_files/eur_w_ld_chr/"
 
@@ -61,8 +62,9 @@ echo "Python: $("${PYTHON}" --version 2>&1)"
 echo "METAL combined manifest: ${COMBINED_MANIFEST}"
 echo "Primary manifest: ${PRIMARY_MANIFEST}"
 echo "Results will be saved under: ${RESULTS_DIR}"
+echo "This array runs one loneliness-versus-trait comparison per task (max 4 at once)."
 
-Rscript "${SCRIPT_DIR}/run_metal_primary_ldsc.R" \
+Rscript "${SCRIPT_DIR}/run_metal_primary_ldsc.R" "rg" \
   "${COMBINED_MANIFEST}" "${CLEAN_MANIFEST}" "${PRIMARY_MANIFEST}" \
   "${ALREADY_MUNGED_CSV}" "${MUNGED_DIR}" "${RESULTS_DIR}" \
   "${PYTHON}" "${MUNGE_PY}" "${LDSC_PY}" "${HM3_SNPLIST}" \

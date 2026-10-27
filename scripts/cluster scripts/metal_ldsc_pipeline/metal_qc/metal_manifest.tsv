@@ -1,0 +1,8 @@
+phenotype	source	members	N	build	path	variants
+Albumin	METAL	METAL_IVW Albumin PanUKB + Albumin FinnGen	521154	GRCh38	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/metal_ivw/Albumin_METAL_combined.tsv.gz	6803084
+C-reactive protein	METAL	METAL_IVW C-reactive protein UKB + C-reactive protein FinnGen	895079	GRCh38	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/metal_ivw/C_reactive_protein_METAL_combined.tsv.gz	5093810
+Eosinophil Count	METAL	METAL_IVW Eosinophil Count PanUKB + Eosinophil Count FinnGen	590853	GRCh38	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/metal_ivw/Eosinophil_Count_METAL_combined.tsv.gz	6814042
+Monocytes	METAL	METAL_IVW Monocytes PanUKB + Monocytes FinnGen	581696	GRCh38	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/metal_ivw/Monocytes_METAL_combined.tsv.gz	6812879
+Neutrophils	METAL	METAL_IVW Neutrophils PanUKB + Neutrophils FinnGen	609691	GRCh38	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/metal_ivw/Neutrophils_METAL_combined.tsv.gz	6822600
+Platelet Count	METAL	METAL_IVW Platelet Count PanUKB + Platelet Count FinnGen	849346	GRCh38	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/metal_ivw/Platelet_Count_METAL_combined.tsv.gz	6849301
+Triglycerides	METAL	METAL_IVW Triglycerides PanUKB + Triglycerides FinnGen	747838	GRCh38	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/metal_ivw/Triglycerides_METAL_combined.tsv.gz	6843842

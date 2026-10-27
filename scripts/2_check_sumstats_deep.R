@@ -1,11 +1,18 @@
 #!/usr/bin/env Rscript
-# Deep QC of cleaned summary statistics before LDSC munging.
+# Deep QC of PRIMARY cleaned summary statistics before LDSC munging. 
+# Run this after SLURM submit_primary_clean_v2.sh (and if needed, submit_missing_traits.sh)
 # Reads clean_manifest.tsv (phenotype, source, input_path, clean_path) and
 # produces a per-phenotype diagnostics table + flagged issues.
-# Which is then used by the cluster script (v2) for cleaning files that need to be re-cleaned. 
-# V2 script can also be used in isolation as the very first pass. 
+# checks variant id integrity (duplicates/multi-allelic)
+# checks percent of bad and rare allele frequencies 
+# checks that z-score = BETA/SE when present
+# checks p-values
+# checks coordinates/build
+# checks sample sizes against reported sample in sumstats spreadsheet
 
 suppressPackageStartupMessages(library(data.table))
+suppressPackageStartupMessages(library(dplyr))
+
 
 manifest_path <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/clean_manifest.tsv"
 out_prefix    <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/qc_deep"
@@ -36,8 +43,28 @@ for (i in seq_len(nrow(manifest))) {
   n0 <- nrow(dt)
   
   # ---- variant ID integrity -------------------------------------------------
-  n_dup_snp   <- n0 - uniqueN(dt$SNP)
+  # Missing rsIDs are counted separately from true duplicates: uniqueN treats
+  # all NAs as one value, which otherwise inflates the duplicate count.
+  n_snp_na  <- sum(is.na(dt$SNP))
+  n_dup_snp <- sum(duplicated(dt$SNP[!is.na(dt$SNP)]))
   pct_rs      <- 100 * mean(grepl("^rs[0-9]+$", dt$SNP), na.rm = TRUE)
+  
+  # Classify duplicate rsIDs by type:
+  #   multi-allelic  same position, different allele pair -- expected in
+  #                  whole-genome files after rsID mapping; munging drops them.
+  #   pos_conflict   same rsID at different positions -- mapping artifact,
+  #                  must be fixed before munging.
+  #   identical      fully duplicated rows -- harmless, deduped at munging.
+  n_dup_multiallelic <- 0L; n_dup_pos_conflict <- 0L; n_dup_identical <- 0L
+  if (n_dup_snp > 0) {
+    dup_ids <- dt$SNP[duplicated(dt$SNP) & !is.na(dt$SNP)]
+    d <- dt[SNP %in% dup_ids,
+            .(n_pos = uniqueN(BP), n_alleles = uniqueN(paste(A1, A2))), by = SNP]
+    n_dup_pos_conflict <- d[n_pos > 1, .N]
+    n_dup_multiallelic <- d[n_pos == 1 & n_alleles > 1, .N]
+    n_dup_identical    <- d[n_pos == 1 & n_alleles == 1, .N]
+    rm(d)
+  }
   
   # ---- alleles --------------------------------------------------------------
   a1 <- toupper(dt$A1); a2 <- toupper(dt$A2)
@@ -106,7 +133,11 @@ for (i in seq_len(nrow(manifest))) {
     status           = "ok",
     n_rows           = n0,
     n_unique_snp     = uniqueN(dt$SNP),
+    n_snp_na         = n_snp_na,
     n_dup_snp        = n_dup_snp,
+    n_dup_multiallelic = n_dup_multiallelic,
+    n_dup_pos_conflict = n_dup_pos_conflict,
+    n_dup_identical    = n_dup_identical,
     pct_rs_ids       = round(pct_rs, 2),
     pct_acgt_alleles = round(pct_acgt, 2),
     n_same_allele    = n_same_allele,
@@ -129,19 +160,40 @@ qc <- rbindlist(qc_rows, fill = TRUE)
 fwrite(qc, paste0(out_prefix, "_table.tsv"), sep = "\t", na = "NA")
 
 # ---- flagging ---------------------------------------------------------------
+# severity: "action" = fix before munging (blocks the QC-passed registry);
+#           "info"   = expected for whole-genome sources, munging handles it.
 flags <- list()
-flag_one <- function(pheno, issue) {
-  flags[[length(flags) + 1L]] <<- data.table(phenotype = pheno, issue = issue)
+flag_one <- function(pheno, issue, severity = "action") {
+  flags[[length(flags) + 1L]] <<- data.table(phenotype = pheno, severity = severity, issue = issue)
 }
 for (r in seq_len(nrow(qc))) {
   p <- qc$phenotype[r]
   if (qc$status[r] != "ok") { flag_one(p, qc$status[r]); next }
-  if (qc$n_dup_snp[r] > 0.01 * qc$n_rows[r])
-    flag_one(p, paste("duplicates:", qc$n_dup_snp[r], "rows"))
-  if (is.finite(qc$pct_acgt_alleles[r]) && qc$pct_acgt_alleles[r] < 99)
-    flag_one(p, paste("non-ACGT alleles:", qc$pct_acgt_alleles[r], "%"))
+  if (is.finite(qc$n_snp_na[r]) && qc$n_snp_na[r] > 0.01 * qc$n_rows[r])
+    flag_one(p, paste("missing rsIDs:", qc$n_snp_na[r], "rows (",
+                      round(100 * qc$n_snp_na[r] / qc$n_rows[r], 1),
+                      "%) -- dropped by cleaning; munging cannot use them"), "info")
+  # Duplicate rsIDs are classified by type, not count: multi-allelic sites and
+  # identical rows are expected in whole-genome sources and munging drops them;
+  # only position conflicts (same rsID, different BP) block the registry.
+  if (is.finite(qc$n_dup_pos_conflict[r]) && qc$n_dup_pos_conflict[r] > 0)
+    flag_one(p, paste("duplicate rsIDs at DIFFERENT positions:", qc$n_dup_pos_conflict,
+                      "rsIDs -- rsID mapping artifact, fix before munging"))
+  else if (is.finite(qc$n_dup_multiallelic[r]) && qc$n_dup_multiallelic[r] > 0)
+    flag_one(p, paste("multi-allelic rsIDs:", qc$n_dup_multiallelic,
+                      "(same position, different alleles; munging drops these)"), "info")
+  # pct_acgt_alleles is the share of rows with valid single-base alleles.
+  # Whole-genome imputed files carry ~5-10% multi-base indel alleles, which
+  # munging drops; only a corrupt allele column (<50% valid) blocks reuse.
+  if (is.finite(qc$pct_acgt_alleles[r]) && qc$pct_acgt_alleles[r] < 50)
+    flag_one(p, paste("allele column corrupt: only", qc$pct_acgt_alleles[r],
+                      "% of rows have valid ACGT alleles"))
+  else if (is.finite(qc$pct_acgt_alleles[r]) && qc$pct_acgt_alleles[r] < 99)
+    flag_one(p, paste("multi-base indel alleles:", 100 - qc$pct_acgt_alleles[r],
+                      "% (munging drops these; no re-clean needed)"), "info")
   if (is.finite(qc$pct_frq_bad[r]) && qc$pct_frq_bad[r] > 0.1)
-    flag_one(p, paste("FRQ outside (0,1):", qc$pct_frq_bad[r], "%"))
+    flag_one(p, paste("FRQ outside (0,1):", qc$pct_frq_bad[r],
+                      "% -- check the source FRQ column for misparsing"))
   if (is.finite(qc$pct_z_eq_beta_se[r]) && qc$pct_z_eq_beta_se[r] < 95)
     flag_one(p, paste("Z != BETA/SE in", 100 - qc$pct_z_eq_beta_se[r], "% of rows"))
   if (is.finite(qc$pct_sign_disagree[r]) && qc$pct_sign_disagree[r] > 1)
@@ -151,14 +203,27 @@ for (r in seq_len(nrow(qc))) {
   if (is.finite(qc$pct_bp_beyond_grch37[r]) && qc$pct_bp_beyond_grch37[r] > 1)
     flag_one(p, paste("positions beyond GRCh37 lengths (GRCh38?):",
                       qc$pct_bp_beyond_grch37[r], "%"))
+  if (is.finite(qc$pct_rs_ids[r]) && qc$pct_rs_ids[r] < 50)
+    flag_one(p, paste("fewer than 50% of SNP IDs are rsIDs (",
+                      qc$pct_rs_ids[r], "%) -- needs coordinate mapping"))
+  if (is.finite(qc$pct_coord_missing[r]) && qc$pct_coord_missing[r] > 5)
+    flag_one(p, paste("CHR/BP missing or unparsable for", qc$pct_coord_missing[r],
+                      "% of rows (e.g., chr-prefixed CHR)"))
   if (is.finite(qc$n_min[r]) && is.finite(qc$n_max[r]) &&
       qc$n_max[r] > 10 * max(qc$n_min[r], 1))
-    flag_one(p, paste("highly variable N:", qc$n_min[r], "-", qc$n_max[r]))
+    flag_one(p, paste("highly variable N:", qc$n_min[r], "-", qc$n_max[r],
+                      "(munging drops low-N SNPs)"), "info")
 }
 
 flag_table <- rbindlist(flags, fill = TRUE)
 fwrite(flag_table, paste0(out_prefix, "_flags.tsv"), sep = "\t", na = "")
-cat("\n==== FLAGS ====\n")
-print(flag_table)
-cat("\nSaved:", paste0(out_prefix, "_table.tsv"), "and", paste0(out_prefix, "_flags.tsv"), "\n")
 
+# Registry of phenotypes with no actionable flags: the cleaner skips these.
+action_flags <- flag_table[severity == "action"]
+passed <- qc[status == "ok" & !(phenotype %in% action_flags$phenotype), .(phenotype)]
+fwrite(passed, paste0(out_prefix, "_passed.tsv"), sep = "\t", na = "")
+
+cat("\n==== FLAGS ====")
+if (nrow(flag_table)) print(as.data.table(flag_table[, .(phenotype, severity, issue)]))
+cat("\nPassed QC:", nrow(passed), "phenotype(s) ->", paste0(out_prefix, "_passed.tsv"), "\n")
+cat("Saved:", paste0(out_prefix, "_table.tsv"), "and", paste0(out_prefix, "_flags.tsv"), "\n")

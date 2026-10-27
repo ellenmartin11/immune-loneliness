@@ -14,7 +14,7 @@ out_dir <- args[[2L]]
 already_munged_path <- if (length(args) >= 3L) args[[3L]] else ""
 analysis <- if (length(args) >= 4L) args[[4L]] else ""
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-message("Primary cleaner version: explicit analysis filter with resumable GRCh37 coordinate batches")
+message("Primary cleaner version: resumable GRCh37 batches, signed-Z fallback, and partial-coordinate rsID mapping")
 
 # Small helpers keep source-format differences in one place.
 norm <- function(x) gsub("[^a-z0-9]", "", tolower(x))
@@ -127,7 +127,7 @@ header_skip <- function(path) {
 # Common column names used by the included GWAS sources.
 aliases <- list(
   SNP = c("rsids", "rsid", "rs_id", "SNP", "SNPID", "MarkerName", "variant_id", "variant", "ID"),
-  CHR = c("#chrom", "CHR", "chromosome", "chrom", "chr"),
+  CHR = c("#chrom", "CHR", "chromosome", "chromsome", "chrom", "chr"),
   BP = c("POS", "BP", "base_pair_location", "position", "pos"),
   A1 = c("effect_allele", "A1", "Allele1", "ALT", "inc_allele", "EA"),
   A2 = c("other_allele", "A2", "Allele2", "REF", "non_effect_allele", "OA"),
@@ -137,6 +137,7 @@ aliases <- list(
   P = c("p_value", "P", "pval", "P.value", "Pvalue"),
   LOGP = c("neg_log_10_p_value", "mlogp", "minus_log10_p", "neg_log10_p", "LOG10P"),
   Z = c("Z", "Zscore", "Z_score", "z_score", "tstat"),
+  DIRECTION = c("direction", "effect_direction", "beta_direction"),
   FRQ = c("effect_allele_frequency", "EAF", "af_alt", "AF_Allele2", "FRQ", "af"),
   INFO = c("INFO", "imputation_info"),
   N = c("N", "n", "sample_size", "total_n", "nCompleteSamples", "Neff"),
@@ -427,6 +428,7 @@ for (i in seq_len(nrow(manifest))) {
   }
 
   input_path <- resolve_path(manifest$input_path[[i]], trait)
+  message("Input for ", trait, ": ", input_path)
 
   if (trait %in% already_munged) {
     message("Already LDSC-munged; leaving as-is: ", trait)
@@ -500,9 +502,38 @@ for (i in seq_len(nrow(manifest))) {
   p <- as_num(get_value("P"))
   logp <- as_num(get_value("LOGP"))
   z <- as_num(get_value("Z"))
+  direction <- get_value("DIRECTION")
   if (is.null(p) && !is.null(logp)) p <- 10^(-logp)
-  if (is.null(z) && !is.null(beta) && !is.null(se)) z <- beta / se
-  if (is.null(z) && !is.null(beta) && !is.null(p)) z <- sign(beta) * qnorm(pmax(p / 2, .Machine$double.xmin), lower.tail = FALSE)
+  n_stats <- nrow(dt)
+  if (is.null(p)) p <- rep(NA_real_, n_stats)
+  if (is.null(z)) z <- rep(NA_real_, n_stats)
+  if (is.null(beta)) beta <- rep(NA_real_, n_stats)
+  if (is.null(se)) se <- rep(NA_real_, n_stats)
+
+  # Fill Z from available signed statistics. Some files include a Z column
+  # that is present but empty, so fill missing entries rather than checking
+  # only whether the column exists.
+  missing_z <- !is.finite(z)
+  z_from_beta_se <- missing_z & is.finite(beta) & is.finite(se) & se > 0
+  z[z_from_beta_se] <- beta[z_from_beta_se] / se[z_from_beta_se]
+  missing_z <- !is.finite(z)
+  z_from_beta_p <- missing_z & is.finite(beta) & is.finite(p) & p > 0 & p <= 1
+  z[z_from_beta_p] <- sign(beta[z_from_beta_p]) *
+    qnorm(pmax(p[z_from_beta_p] / 2, .Machine$double.xmin), lower.tail = FALSE)
+
+  # A direction string is usable only when all its non-missing signs agree.
+  # Mixed strings (for example '++-') are ambiguous and remain missing.
+  if (!is.null(direction)) {
+    direction <- trimws(as.character(direction))
+    direction_sign <- rep(NA_real_, length(direction))
+    direction_sign[grepl("^\\++$", direction)] <- 1
+    direction_sign[grepl("^-+$", direction)] <- -1
+    missing_z <- !is.finite(z)
+    z_from_direction <- missing_z & is.finite(p) & p > 0 & p <= 1 &
+      !is.na(direction_sign)
+    z[z_from_direction] <- direction_sign[z_from_direction] *
+      qnorm(pmax(p[z_from_direction] / 2, .Machine$double.xmin), lower.tail = FALSE)
+  }
   if (is.null(p) && !is.null(z)) p <- 2 * pnorm(-abs(z))
 
   add_sheet_sample_size <- function(values, column) {
@@ -539,7 +570,7 @@ for (i in seq_len(nrow(manifest))) {
     if (any(is.finite(value))) set(out, j = column, value = value)
   }
 
-  if (all(is.na(out$SNP)) && all(!is.na(out$CHR)) && all(!is.na(out$BP))) {
+  if (all(is.na(out$SNP)) && any(!is.na(out$CHR) & is.finite(out$BP) & out$BP > 0)) {
     is_finngen <- grepl(
       "finngen",
       paste(trait, manifest$source[[i]], manifest$cohort[[i]]),
@@ -547,9 +578,14 @@ for (i in seq_len(nrow(manifest))) {
     )
     is_lymphocyte_gwas_catalog <- identical(trait, "Lymphocyte Count") &&
       grepl("GWAS Catalog", manifest$source[[i]], ignore.case = TRUE)
+    is_diagram <- grepl(
+      "DIAGRAM",
+      paste(manifest$source[[i]], manifest$cohort[[i]]),
+      ignore.case = TRUE
+    )
     coordinate_build <- if (is_finngen) {
       "GRCh38"
-    } else if (is_lymphocyte_gwas_catalog) {
+    } else if (is_lymphocyte_gwas_catalog || is_diagram) {
       "GRCh37"
     } else {
       stop("No variant ID column found for ", trait,
@@ -576,6 +612,11 @@ for (i in seq_len(nrow(manifest))) {
     }
     message("No rsID column for ", trait, "; looking up rsIDs from ", coordinate_build,
             " coordinates")
+    rows_with_coordinates <- !is.na(out$CHR) & is.finite(out$BP) & out$BP > 0
+    if (sum(!rows_with_coordinates)) {
+      message("Dropping ", sum(!rows_with_coordinates), " row(s) without usable coordinates for ", trait)
+      out <- out[rows_with_coordinates]
+    }
     out[, SNP := NULL]
     mapped_path <- tempfile(tmpdir = out_dir, fileext = ".tsv.gz")
     mapped <- MungeSumstats::format_sumstats(
@@ -598,8 +639,33 @@ for (i in seq_len(nrow(manifest))) {
            " and that its matching SNPlocs reference is installed.")
     }
   }
-  if (all(is.na(out$SNP))) stop("No usable variant IDs or coordinate-based rsID mapping for ", trait)
-  if (all(is.na(out$P)) || all(is.na(out$Z))) stop("Need P and signed effect information for ", trait)
+  if (all(is.na(out$SNP))) {
+    id_column <- find_col(names(dt), aliases$SNP)
+    chr_column <- find_col(names(dt), aliases$CHR)
+    bp_column <- find_col(names(dt), aliases$BP)
+    id_count <- if (is.null(id_column)) 0L else sum(!is.na(dt[[id_column]]) & nzchar(trimws(as.character(dt[[id_column]]))))
+    coordinate_count <- if (is.null(chr_column) || is.null(bp_column)) 0L else
+      sum(!is.na(dt[[chr_column]]) & nzchar(trimws(as.character(dt[[chr_column]]))) &
+            is.finite(as_num(dt[[bp_column]])) & as_num(dt[[bp_column]]) > 0)
+    stop("No usable variant IDs or coordinate-based rsID mapping for ", trait,
+         ". Parsed ID column: ", if (is.null(id_column)) "<none>" else id_column,
+         " (", id_count, " nonblank values); chromosome column: ",
+         if (is.null(chr_column)) "<none>" else chr_column,
+         "; position column: ", if (is.null(bp_column)) "<none>" else bp_column,
+         " (", coordinate_count, " rows with both coordinates). Parsed headers: ",
+         paste(names(dt), collapse = ", "),
+         ". Check that these are the headers from the intended source file.")
+  }
+  if (all(is.na(out$P)) || all(is.na(out$Z))) {
+    n_valid_p <- sum(is.finite(out$P) & out$P > 0 & out$P <= 1)
+    n_valid_z <- sum(is.finite(out$Z))
+    direction_values <- if (is.null(direction)) "<no direction column>" else
+      paste(utils::head(unique(na.omit(as.character(direction))), 8L), collapse = ", ")
+    stop("Need P and signed effect information for ", trait,
+         ". Usable P rows: ", n_valid_p, "; signed Z rows: ", n_valid_z,
+         "; direction examples: ", direction_values,
+         ". Check the actual source headers and direction encoding in sumstats_headers.tsv.")
+  }
   if (all(is.na(out$N)) && (all(is.na(out$N_CASE)) || all(is.na(out$N_CONTROL)))) {
     stop("No sample-size information found for ", trait, ". Add N to the source or reference sheet.")
   }

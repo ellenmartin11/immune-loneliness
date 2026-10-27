@@ -272,3 +272,289 @@ run_ldsc_munge <- function(input_path, output_prefix, N_override) {
   if (!file.exists(sumstats_path)) stop("Expected LDSC-munged file was not created: ", sumstats_path)
   sumstats_path
 }
+
+############################################
+# CHECKING QUALITY OF PRIMARY_CLEAN SCRIPT #
+############################################
+
+qc_sumstats <- function(path) {
+  
+  message("Checking: ", path)
+  
+  dt <- fread(path)
+  
+  # check basic dim and headers
+  
+  n_rows <- nrow(dt)
+  cols <- names(dt)
+  
+  missing_required <- setdiff(required_cols, cols)
+  
+  # check SNP id formatting
+  
+  n_missing_snp <- if ("SNP" %in% cols) sum(is.na(dt$SNP) | dt$SNP == "") else NA_integer_
+  
+  n_duplicate_snp <- if ("SNP" %in% cols) {
+    sum(duplicated(dt$SNP))
+  } else {
+    NA_integer_
+  }
+  
+  prop_rsids <- if ("SNP" %in% cols) {
+    mean(grepl("^rs[0-9]+$", dt$SNP), na.rm = TRUE)
+  } else {
+    NA_real_
+  }
+  
+  # check valid alleles
+  
+  valid_alleles <- c("A", "C", "G", "T")
+  
+  invalid_A1 <- if ("A1" %in% cols) {
+    sum(!dt$A1 %in% valid_alleles, na.rm = TRUE)
+  } else {
+    NA_integer_
+  }
+  
+  invalid_A2 <- if ("A2" %in% cols) {
+    sum(!dt$A2 %in% valid_alleles, na.rm = TRUE)
+  } else {
+    NA_integer_
+  }
+  
+  same_allele <- if (all(c("A1", "A2") %in% cols)) {
+    sum(dt$A1 == dt$A2, na.rm = TRUE)
+  } else {
+    NA_integer_
+  }
+  
+  # check palindromic alleles
+  palindromic <- if (all(c("A1", "A2") %in% cols)) {
+    
+    pair <- paste0(dt$A1, dt$A2)
+    
+    sum(pair %in% c(
+      "AT", "TA",
+      "CG", "GC"
+    ), na.rm = TRUE)
+    
+  } else {
+    NA_integer_
+  }
+  
+  # chromosome sanity check
+  
+  invalid_chr <- if ("CHR" %in% cols) {
+    
+    chr <- suppressWarnings(as.integer(dt$CHR))
+    
+    sum(
+      is.na(chr) |
+        chr < 1 |
+        chr > 22
+    )
+    
+  } else {
+    NA_integer_
+  }
+  
+  # check positions of base pairs
+  
+  invalid_bp <- if ("BP" %in% cols) {
+    
+    bp <- suppressWarnings(as.numeric(dt$BP))
+    
+    sum(
+      is.na(bp) |
+        bp <= 0
+    )
+    
+  } else {
+    NA_integer_
+  }
+  
+  # check effect sizes (BETA)
+  
+  missing_beta <- if ("BETA" %in% cols) {
+    sum(is.na(dt$BETA) | !is.finite(dt$BETA))
+  } else {
+    NA_integer_
+  }
+  
+  extreme_beta <- if ("BETA" %in% cols) {
+    sum(abs(dt$BETA) > 10, na.rm = TRUE)
+  } else {
+    NA_integer_
+  }
+  
+  # check standard errors
+  
+  invalid_se <- if ("SE" %in% cols) {
+    sum(
+      is.na(dt$SE) |
+        !is.finite(dt$SE) |
+        dt$SE <= 0
+    )
+  } else {
+    NA_integer_
+  }
+  
+  # check p-vals
+  
+  invalid_p <- if ("P" %in% cols) {
+    sum(
+      is.na(dt$P) |
+        !is.finite(dt$P) |
+        dt$P < 0 |
+        dt$P > 1
+    )
+  } else {
+    NA_integer_
+  }
+  
+  zero_p <- if ("P" %in% cols) {
+    sum(dt$P == 0, na.rm = TRUE)
+  } else {
+    NA_integer_
+  }
+  
+  # check N
+  
+  invalid_n <- if ("N" %in% cols) {
+    sum(
+      is.na(dt$N) |
+        !is.finite(dt$N) |
+        dt$N <= 0
+    )
+  } else {
+    NA_integer_
+  }
+  
+  median_n <- if ("N" %in% cols) {
+    median(dt$N, na.rm = TRUE)
+  } else {
+    NA_real_
+  }
+  
+  
+  # Z-score consistency
+  # Compare stored Z against BETA / SE if both available.
+  # This is useful for catching sign flips / bad cleaning.
+  # ----------------------------------------------------------
+  
+  z_correlation <- NA_real_
+  
+  if (all(c("BETA", "SE", "Z") %in% cols)) {
+    
+    z_calc <- dt$BETA / dt$SE
+    
+    valid <- (
+      is.finite(z_calc) &
+        is.finite(dt$Z)
+    )
+    
+    if (sum(valid) > 100) {
+      z_correlation <- cor(
+        z_calc[valid],
+        dt$Z[valid],
+        use = "complete.obs"
+      )
+    }
+  }
+  
+  # P-value consistency
+  # Check whether P approximately agrees with BETA / SE.
+  
+  p_correlation <- NA_real_
+  
+  if (all(c("BETA", "SE", "P") %in% cols)) {
+    
+    z_calc <- dt$BETA / dt$SE
+    
+    p_calc <- 2 * pnorm(
+      abs(z_calc),
+      lower.tail = FALSE
+    )
+    
+    valid <- (
+      is.finite(p_calc) &
+        is.finite(dt$P) &
+        dt$P > 0 &
+        p_calc > 0
+    )
+    
+    if (sum(valid) > 100) {
+      
+      p_correlation <- cor(
+        -log10(dt$P[valid]),
+        -log10(p_calc[valid]),
+        use = "complete.obs"
+      )
+    }
+  }
+  
+  # Test-statistic distribution
+  
+  median_chisq <- NA_real_
+  lambda_gc <- NA_real_
+  
+  if (all(c("BETA", "SE") %in% cols)) {
+    
+    z <- dt$BETA / dt$SE
+    
+    chisq <- z^2
+    
+    median_chisq <- median(
+      chisq[is.finite(chisq)],
+      na.rm = TRUE
+    )
+    
+    # Median chi-square under H0 for 1 df ~= 0.4549364
+    lambda_gc <- median_chisq / 0.4549364
+  }
+  
+  # Summary
+  
+  data.table(
+    file = path,
+    
+    n_rows = n_rows,
+    n_columns = length(cols),
+    
+    missing_required_cols =
+      ifelse(
+        length(missing_required) == 0,
+        "",
+        paste(missing_required, collapse = ",")
+      ),
+    
+    n_missing_snp = n_missing_snp,
+    n_duplicate_snp = n_duplicate_snp,
+    prop_rsids = prop_rsids,
+    
+    invalid_A1 = invalid_A1,
+    invalid_A2 = invalid_A2,
+    same_allele = same_allele,
+    palindromic = palindromic,
+    
+    invalid_chr = invalid_chr,
+    invalid_bp = invalid_bp,
+    
+    missing_beta = missing_beta,
+    extreme_beta = extreme_beta,
+    
+    invalid_se = invalid_se,
+    
+    invalid_p = invalid_p,
+    zero_p = zero_p,
+    
+    invalid_n = invalid_n,
+    median_n = median_n,
+    
+    z_correlation = z_correlation,
+    p_correlation = p_correlation,
+    
+    median_chisq = median_chisq,
+    lambda_gc = lambda_gc
+  )
+}

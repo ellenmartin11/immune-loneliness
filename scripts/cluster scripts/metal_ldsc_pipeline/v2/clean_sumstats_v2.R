@@ -239,6 +239,8 @@ map_coordinates_to_rsids <- function(out, trait, src_text) {
     "GRCh38"
   } else if (grepl("GWAS Catalog|DIAGRAM", src_text, ignore.case = TRUE)) {
     "GRCh37"
+  } else if (grepl("pan[ _-]?ukb", src_text, ignore.case = TRUE)) {
+    "GRCh37"  # Pan-UKB flat files are on GRCh37 (pan.ukbb.broadinstitute.org)
   } else {
     stop("Pseudo-rsIDs or missing rsIDs for ", trait, " but source/cohort ('",
          src_text, "') does not identify a genome build for coordinate lookup.")
@@ -384,7 +386,8 @@ if (is.na(coordinate_batch_rows) || coordinate_batch_rows < 1L) {
 }
 
 clean_coordinates_in_batches <- function(path, skip, file_headers,
-                                         read_headers, trait, out_path, sheet_n) {
+                                         read_headers, trait, out_path, sheet_n,
+                                         is_panukb = FALSE) {
   required_packages <- c(
     "SNPlocs.Hsapiens.dbSNP155.GRCh37",
     "BSgenome.Hsapiens.1000genomes.hs37d5",
@@ -419,13 +422,16 @@ clean_coordinates_in_batches <- function(path, skip, file_headers,
   # folder, so completed lymphocyte batches from v1 runs are still reused. The
   # rest of the signature must still match exactly (input metadata, selected
   # columns, sample size, rows per batch).
-  signature_versions <- 2:4
+  signature_versions <- 2:5
   cache_keys <- vapply(signature_versions, function(version) {
     fields <- signature_fields
     if (version <= 3L) {
       signature <- c(list(version = as.integer(version)), fields)
-    } else {
+    } else if (version == 4L) {
       fields$cleaner <- "v2"
+      signature <- c(list(version = as.integer(version)), fields)
+    } else {
+      fields$cleaner <- "v3"  # v3: EUR-aware batched column matching
       signature <- c(list(version = as.integer(version)), fields)
     }
     writeBin(serialize(signature, NULL), signature_path)
@@ -433,10 +439,12 @@ clean_coordinates_in_batches <- function(path, skip, file_headers,
   }, character(1))
   candidate_dirs <- file.path(trait_cache_dir, cache_keys)
   candidate_exists <- dir.exists(candidate_dirs)
+  # Only caches that produced at least one mapped chunk are reusable. A cache
+  # made of entirely .empty markers means the run mapped nothing (e.g., column
+  # matching failed) -- reusing it would silently reproduce the failure.
   completed_counts <- vapply(candidate_dirs, function(candidate) {
     if (!dir.exists(candidate)) return(0L)
-    length(Sys.glob(file.path(candidate, "chunk_*.tsv.gz"))) +
-      length(Sys.glob(file.path(candidate, "chunk_*.empty")))
+    length(Sys.glob(file.path(candidate, "chunk_*.tsv.gz")))
   }, integer(1))
   reusable <- which(candidate_exists & completed_counts > 0L)
   if (length(reusable)) {
@@ -446,9 +454,18 @@ clean_coordinates_in_batches <- function(path, skip, file_headers,
     message("Reusing compatible cache folder for ", trait, ": ",
             candidate_dirs[[best]], " (", completed_counts[[best]], " completed batches)")
   } else {
-    cache_key <- cache_keys[[which(signature_versions == 4L)]]
+    cache_key <- cache_keys[[which(signature_versions == 5L)]]
     message("No compatible completed cache found for ", trait,
             "; starting a new cache at ", file.path(trait_cache_dir, cache_key))
+    message("Current signature: path=", signature_fields$path,
+            " size=", signature_fields$size,
+            " mtime=", signature_fields$mtime,
+            " rows_per_batch=", signature_fields$rows_per_batch,
+            " sample_size=", paste(signature_fields$sample_size, collapse = ","),
+            " build=", signature_fields$build,
+            " mungesumstats=", signature_fields$mungesumstats)
+    message("Existing cache folders (not reused): ",
+            paste(basename(list.dirs(trait_cache_dir, recursive = FALSE)), collapse = ", "))
   }
   cache_dir <- file.path(trait_cache_dir, cache_key)
   dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
@@ -489,6 +506,16 @@ clean_coordinates_in_batches <- function(path, skip, file_headers,
       n <- nrow(dt)
       get_value <- function(key) {
         column <- best_column(names(dt), dt, aliases[[key]])
+        # PanUKB flat files have no plain BETA/SE/P columns -- only the
+        # cross-ancestry _meta columns and per-ancestry _EUR-suffixed columns
+        # (beta_EUR, se_EUR, pval_EUR, af_EUR). Prefer the EUR column when
+        # present, matching the standard path's behavior.
+        if (is_panukb) {
+          eur_names <- c(paste0(aliases[[key]], "_EUR"), paste0(aliases[[key]], ".EUR"),
+                         paste0("EUR_", aliases[[key]]))
+          eur_column <- best_column(names(dt), dt, eur_names)
+          if (!is.null(eur_column)) column <- eur_column
+        }
         if (is.null(column)) NULL else dt[[column]]
       }
       beta <- as_num(get_value("BETA"))
@@ -781,9 +808,14 @@ clean_one_trait <- function(i) {
       rm(peek)
     }
     file_size_gb <- if (file.exists(input_path)) file.info(input_path)$size / 1024^3 else 0
-    use_batched <- grepl("GWAS Catalog", manifest$source[[i]], ignore.case = TRUE) &&
-      (!has_snp_column || snp_is_pseudo) &&
-      (identical(trait, "Lymphocyte Count") || file_size_gb > batch_threshold_gb)
+    # Batched streaming is triggered by needing coordinate->rsID mapping on a
+    # large file, regardless of source: full-file MungeSumstats mapping of a
+    # 15M+ row file needs >120 GB. Source names kept for clarity; the size
+    # threshold (CLEAN_BATCH_GB, default 2) catches everything else.
+    use_batched <- (!has_snp_column || snp_is_pseudo) &&
+      (identical(trait, "Lymphocyte Count") ||
+       grepl("GWAS Catalog|DIAGRAM", manifest$source[[i]], ignore.case = TRUE) ||
+       file_size_gb > batch_threshold_gb)
     if (use_batched) {
       source_has_n <- !is.na(first_match(file_headers, aliases$N))
       sheet_n <- if (is.na(n_col)) NA_real_ else as_num(ref[[n_col]][[i]])
@@ -793,7 +825,7 @@ clean_one_trait <- function(i) {
       clean_coordinates_in_batches(
         path = input_path, skip = skip, file_headers = file_headers,
         read_headers = read_headers, trait = trait, out_path = out_path,
-        sheet_n = sheet_n
+        sheet_n = sheet_n, is_panukb = is_panukb
       )
       result[, status := "cleaned_batched"]
       result[, clean_path := normalizePath(out_path, mustWork = TRUE)]
@@ -932,6 +964,17 @@ clean_one_trait <- function(i) {
       out <- out[!bad_id]
     }
 
+    # Drop rsIDs that appear at multiple positions (dbSNP merged/multi-mapping
+    # artifacts, e.g., a handful per FinnGen file): munging would keep an
+    # arbitrary row, potentially with statistics from the wrong position.
+    if (anyDuplicated(out$SNP)) {
+      multi_pos <- out[!is.na(SNP), .(n_pos = uniqueN(BP)), by = SNP][n_pos > 1, SNP]
+      if (length(multi_pos)) {
+        message("Dropping ", length(multi_pos), " rsID(s) at multiple positions for ", trait)
+        out <- out[!(SNP %in% multi_pos)]
+      }
+    }
+
     if (all(is.na(out$P)) || all(is.na(out$Z))) {
       n_valid_p <- sum(is.finite(out$P) & out$P > 0 & out$P <= 1)
       n_valid_z <- sum(is.finite(out$Z))
@@ -1013,4 +1056,6 @@ if (nrow(failures)) {
 }
 message("Done. Status: ", paste(results[, .N, by = status][, paste0(status, "=", N)],
                                 collapse = ", "), ". Reports are in ", out_dir)
+
+
 

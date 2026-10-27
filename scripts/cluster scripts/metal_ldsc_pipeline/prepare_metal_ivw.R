@@ -933,27 +933,66 @@ for (combined_name in names(pairs)) {
   shared_paths <- character(length(members))
   for (j in seq_along(members)) {
     dat <- fread(cleaned[[members[[j]]]]$path, showProgress = TRUE)
-    dat <- dat[SNP %chin% shared_rsids]
-    shared_paths[[j]] <- file.path(shared_dir, paste0(safe_name(members[[j]]), "_shared.tsv.gz"))
-    fwrite(dat, shared_paths[[j]], sep = "\t", na = "NA")
+    required_metal_columns <- c("SNP", "A1", "A2", "BETA", "SE", "P", "N")
+    if (!all(required_metal_columns %in% names(dat))) {
+      stop("Prepared input for ", members[[j]], " is missing METAL fields: ",
+           paste(setdiff(required_metal_columns, names(dat)), collapse = ", "),
+           ". Found: ", paste(names(dat), collapse = ", "))
+    }
+    dat <- dat[SNP %chin% shared_rsids, ..required_metal_columns]
+    # Use plain TSV here: gzip support depends on how the cluster's METAL
+    # executable was built, while these files are temporary pairwise inputs.
+    # Disable automatic quoting so METAL sees bare headers such as SNP, not "SNP".
+    shared_paths[[j]] <- file.path(shared_dir, paste0(safe_name(members[[j]]), "_shared.tsv"))
+    fwrite(dat, shared_paths[[j]], sep = "\t", quote = FALSE, na = "NA")
+    shared_header <- names(fread(shared_paths[[j]], nrows = 0L, showProgress = FALSE))
+    if (!all(required_metal_columns %in% shared_header)) {
+      stop("Shared METAL input has an unexpected header for ", members[[j]],
+           ". Found: ", paste(shared_header, collapse = ", "))
+    }
     rm(dat)
     invisible(gc(FALSE))
   }
 
   metal_script <- file.path(out_dir, paste0(safe_name(combined_name), ".metal.txt"))
-  lines <- c("SCHEME STDERR", "VERBOSE OFF", "GENOMICCONTROL OFF", "MARKER SNP",
-             "ALLELE A1 A2", "EFFECT BETA", "STDERR SE")
+  lines <- c("SCHEME STDERR", "VERBOSE OFF", "GENOMICCONTROL OFF", "SEPARATOR TAB",
+             "MARKER SNP", "ALLELE A1 A2", "EFFECT BETA", "STDERRLABEL SE")
   for (input_path in shared_paths) lines <- c(lines, paste("PROCESS", input_path))
   lines <- c(lines, paste("OUTFILE", prefix, ".tbl"), "ANALYZE", "QUIT")
   writeLines(lines, metal_script)
   log_path <- paste0(prefix, ".metal.log")
-  metal_stderr <- system2(metal_exe, stdin = metal_script, stdout = log_path, stderr = TRUE)
-  writeLines(metal_stderr, paste0(prefix, ".metal.stderr.log"))
-  status <- attr(metal_stderr, "status")
-  if (is.null(status)) status <- 0L
-  if (!identical(as.integer(status), 0L)) stop("METAL failed for ", combined_name, "; see ", log_path, " and ", paste0(prefix, ".metal.stderr.log"))
-  table_path <- paste0(prefix, ".tbl")
-  if (!file.exists(table_path)) stop("METAL completed without its output table: ", table_path)
+  stderr_path <- paste0(prefix, ".metal.stderr.log")
+  status <- system2(metal_exe, stdin = metal_script, stdout = log_path, stderr = stderr_path)
+  if (!identical(as.integer(status), 0L)) {
+    stop("METAL failed for ", combined_name, " with exit status ", status,
+         "; inspect ", log_path, " and ", stderr_path)
+  }
+  # METAL numbers analysis outputs (for example, prefix1.tbl) even when the
+  # script contains only one ANALYZE command. Accept that standard name as
+  # well as the unnumbered name used by some builds.
+  table_pattern <- paste0("^", basename(prefix), "[0-9]*\\.tbl(\\.gz)?$")
+  table_candidates <- list.files(out_dir, pattern = table_pattern, full.names = TRUE)
+  preferred_tables <- c(paste0(prefix, ".tbl"), paste0(prefix, "1.tbl"))
+  preferred_match <- preferred_tables[preferred_tables %in% table_candidates]
+  if (length(preferred_match)) {
+    table_path <- preferred_match[[1L]]
+  } else if (length(table_candidates)) {
+    table_times <- file.info(table_candidates)$mtime
+    table_path <- table_candidates[[which.max(table_times)]]
+  } else {
+    table_path <- paste0(prefix, ".tbl")
+  }
+  if (!length(table_candidates)) {
+    candidates <- list.files(out_dir,
+                            pattern = paste0("^", basename(prefix), "[^/]*\\.(tbl|txt)(\\.gz)?$"),
+                            full.names = TRUE)
+    candidate_text <- if (length(candidates)) paste(candidates, collapse = ", ") else "none found"
+    stop("METAL exited successfully but its expected output table is missing: ", table_path,
+         ". Other matching outputs: ", candidate_text,
+         ". Inspect the METAL command log: ", log_path,
+         " and stderr log: ", stderr_path,
+         ". Command file: ", metal_script)
+  }
   tab <- fread(table_path, check.names = FALSE, showProgress = FALSE)
   col_snp <- find_col(names(tab), c("MarkerName", "SNP"))
   col_a1 <- find_col(names(tab), c("Allele1", "A1"))
@@ -972,6 +1011,9 @@ for (combined_name in names(pairs)) {
   if (!nrow(final)) stop("METAL returned no usable variants for ", combined_name)
   final_path <- paste0(prefix, "_combined.tsv.gz")
   fwrite(final, final_path, sep = "\t", na = "NA")
+  # Remove temporary plain-text pair inputs after success; if METAL fails,
+  # leave them in place for inspection before the next run rewrites them.
+  unlink(shared_paths)
   combined_manifest[[length(combined_manifest) + 1L]] <- data.table(
     phenotype = combined_name, source = "METAL_IVW", members = paste(members, collapse = " + "),
     N = n_total, build = "GRCh38", path = normalizePath(final_path, mustWork = TRUE), variants = nrow(final))

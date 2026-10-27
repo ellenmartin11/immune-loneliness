@@ -1,14 +1,10 @@
 phenotype,source,path
 Allergic rhinitis PanUKB,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_categorical-20002-both_sexes-1387.tsv.sumstats.gz
-Schizophrenia PGC,PGC,/gpfs/gibbs/pi/polimanti/SUMMARY.STATISTICS/scz_2022/munged.EUR.scz2022.sumstats
 Albumin PanUKB,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_biomarkers-30600-both_sexes-irnt.tsv.sumstats.gz
-Basophil Count PanUKB,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_continuous-30160-both_sexes.tsv.sumstats.gz
 Eosinophil Count PanUKB,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_continuous-30150-both_sexes-irnt.tsv.sumstats.gz
 Monocytes PanUKB,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_continuous-30130-both_sexes-irnt.tsv.sumstats.gz
 Neutrophils PanUKB,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_continuous-30140-both_sexes-irnt.tsv.sumstats.gz
 Platelet Count PanUKB,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_continuous-30080-both_sexes-irnt.tsv.sumstats.gz
-Sleep Duration PanUKB,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_continuous-1160-both_sexes.tsv.sumstats.gz
-Loneliness isolation PanUKB,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_categorical-2020-both_sexes-2020.tsv.sumstats.gz
 Income PanUKB,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_continuous-738-both_sexes.tsv.sumstats.gz
 Alcohol Intake Frequency,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_continuous-1558-both_sexes.tsv.sumstats.gz
 Cigarettes Per Day PanUKB,PanUKB,/gpfs/gibbs/pi/polimanti/Pan_UKBiobank_sumstats/LDSC.munged/EUR.munged/EUR_continuous-Smoking-both_sexes-CPD_combined_irnt.tsv.sumstats.gz

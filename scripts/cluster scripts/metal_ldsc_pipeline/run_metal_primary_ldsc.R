@@ -1,14 +1,15 @@
 #!/usr/bin/env Rscript
 
-# Munges METAL combined traits and new Primary traits, reuses eligible pre-munged files,
-# then compares every trait with loneliness isolation and FDR-corrects those tests.
+# Run either the input-preparation stage or the resumable LDSC correlation stage.
 suppressPackageStartupMessages(library(data.table))
 args <- commandArgs(trailingOnly = TRUE)
-if (length(args) != 12L) {
-  stop(paste("Usage: run_metal_primary_ldsc.R <combined_manifest> <clean_manifest> <primary_manifest>",
+if (length(args) != 13L || !args[[1L]] %chin% c("prepare", "rg")) {
+  stop(paste("Usage: run_metal_primary_ldsc.R <prepare|rg> <combined_manifest> <clean_manifest> <primary_manifest>",
              "<already_munged.csv> <munged_dir> <results_dir> <python> <munge_sumstats.py>",
              "<ldsc.py> <hm3_snplist> <ref_ld_chr_prefix> <w_ld_chr_prefix>"))
 }
+stage <- args[[1L]]
+args <- args[-1L]
 combined_manifest_path <- args[[1L]]
 clean_manifest_path <- args[[2L]]
 primary_manifest_path <- args[[3L]]
@@ -35,9 +36,124 @@ find_col <- function(nms, candidate) {
   if (length(hit)) nms[[hit[[1L]]]] else NULL
 }
 safe_label <- function(x) {
-  x <- gsub("[^A-Za-z0-9]+", "_", x)
-  x <- gsub("^_+|_+$", "", x)
-  if (!nzchar(x)) "trait" else x
+  vapply(as.character(x), function(value) {
+    if (is.na(value)) value <- ""
+    value <- gsub("[^A-Za-z0-9]+", "_", value)
+    value <- gsub("^_+|_+$", "", value)
+    if (!nzchar(value)) "trait" else value
+  }, character(1), USE.NAMES = FALSE)
+}
+
+# The correlation stage consumes the stable manifest created by stage one.
+# Existing valid pair logs are reused, so a restarted job only runs unfinished pairs.
+if (stage == "rg") {
+  input_manifest_path <- file.path(munged_dir, "ldsc_inputs_manifest.tsv")
+  if (!file.exists(input_manifest_path)) {
+    stop("Prepared LDSC-input manifest not found: ", input_manifest_path,
+         ". Complete submit_metal_primary_munge.sh first.")
+  }
+  traits <- fread(input_manifest_path, sep = "\t", showProgress = FALSE)
+  if (!all(c("phenotype", "source", "origin", "path") %in% names(traits))) {
+    stop("Prepared LDSC-input manifest is missing required fields.")
+  }
+  if (!any(traits$phenotype == "Loneliness isolation PanUKB")) {
+    stop("Loneliness isolation PanUKB is not available in the prepared LDSC inputs.")
+  }
+  for (input_path in traits$path) {
+    if (!file.exists(input_path) || file.access(input_path, 4L) != 0L) {
+      stop("Prepared LDSC input is missing or unreadable: ", input_path)
+    }
+  }
+
+  sign_check_path <- file.path(munged_dir, "ldsc_sign_consistency.tsv")
+  if (file.exists(sign_check_path)) {
+    file.copy(sign_check_path, file.path(results_dir, "ldsc_sign_consistency.tsv"), overwrite = TRUE)
+  }
+
+  extract_rg_result <- function(log_path) {
+    if (!file.exists(log_path)) stop("LDSC did not create its log: ", log_path)
+    lines <- sub("^.*?INFO\\s+-\\s+", "", readLines(log_path, warn = FALSE), perl = TRUE)
+    marker <- grep("Summary of Genetic Correlation Results", lines, fixed = TRUE)
+    if (!length(marker)) stop("No genetic-correlation table found in: ", log_path)
+    block <- lines[seq.int(marker[[1L]] + 1L, length(lines))]
+    words <- strsplit(trimws(block), "\\s+")
+    header <- which(vapply(words, function(x) all(c("p1", "p2", "rg", "se", "z", "p") %in% tolower(x)), logical(1)))
+    if (!length(header)) stop("Could not identify the LDSC result-table header in: ", log_path)
+    h <- header[[1L]]
+    rows <- block[seq.int(h + 1L, length(block))]
+    row_words <- strsplit(trimws(rows), "\\s+")
+    keep <- vapply(row_words, function(x) length(x) >= 6L && grepl("^[-+0-9.eE]+$|^NA$|^nan$", x[[3L]], ignore.case = TRUE), logical(1))
+    if (!any(keep)) stop("No correlation row found in: ", log_path)
+    tab <- read.table(text = paste(c(block[[h]], rows[keep]), collapse = "\n"),
+                      header = TRUE, sep = "", check.names = FALSE, stringsAsFactors = FALSE,
+                      na.strings = c("NA", "nan"))
+    if (nrow(tab) != 1L) stop("Expected one LDSC pair in ", log_path, "; got ", nrow(tab), ".")
+    tab
+  }
+
+  anchor_i <- which(traits$phenotype == "Loneliness isolation PanUKB")
+  others <- setdiff(seq_len(nrow(traits)), anchor_i)
+  array_id <- Sys.getenv("SLURM_ARRAY_TASK_ID", unset = "")
+  if (nzchar(array_id)) {
+    slot <- suppressWarnings(as.integer(array_id))
+    if (is.na(slot) || slot < 1L) stop("Invalid SLURM_ARRAY_TASK_ID: ", array_id)
+    if (slot > length(others)) {
+      message("Array task ", slot, " has no phenotype pair; nothing to do.")
+      quit(save = "no", status = 0L, runLast = FALSE)
+    }
+    slots <- slot
+  } else {
+    slots <- seq_along(others)
+  }
+
+  for (slot in slots) {
+    target_i <- others[[slot]]
+    out_prefix <- file.path(results_dir, sprintf("loneliness_%03d_%s", target_i,
+                                                  safe_label(traits$phenotype[[target_i]])))
+    signature <- c(
+      normalizePath(traits$path[[anchor_i]], mustWork = TRUE),
+      as.character(file.info(traits$path[[anchor_i]])$size),
+      as.character(file.info(traits$path[[anchor_i]])$mtime),
+      normalizePath(traits$path[[target_i]], mustWork = TRUE),
+      as.character(file.info(traits$path[[target_i]])$size),
+      as.character(file.info(traits$path[[target_i]])$mtime),
+      normalizePath(ldsc_py, mustWork = TRUE)
+    )
+    signature_path <- paste0(out_prefix, ".signature")
+    log_path <- paste0(out_prefix, ".log")
+    signature_matches <- file.exists(signature_path) &&
+      identical(readLines(signature_path, warn = FALSE), signature)
+    tab <- if (signature_matches && file.exists(log_path)) {
+      tryCatch(extract_rg_result(log_path), error = function(e) NULL)
+    } else NULL
+
+    if (is.null(tab)) {
+      cmd <- c(ldsc_py, "--rg", paste(normalizePath(traits$path[c(anchor_i, target_i)], mustWork = TRUE), collapse = ","),
+               "--ref-ld-chr", ref_ld_chr, "--w-ld-chr", w_ld_chr, "--out", out_prefix)
+      console <- system2(python, cmd, stdout = TRUE, stderr = TRUE)
+      status <- attr(console, "status")
+      if (is.null(status)) status <- 0L
+      writeLines(console, paste0(out_prefix, ".console.log"))
+      if (status != 0L) {
+        stop("LDSC failed for ", traits$phenotype[[target_i]], "; see ", out_prefix, ".console.log")
+      }
+      tab <- extract_rg_result(log_path)
+      writeLines(signature, signature_path)
+      message("Completed loneliness correlation with ", traits$phenotype[[target_i]])
+    } else {
+      message("Reusing completed loneliness correlation with ", traits$phenotype[[target_i]])
+    }
+
+    result <- data.table(
+      exposure = "Loneliness isolation PanUKB", exposure_source = traits$source[[anchor_i]],
+      trait = traits$phenotype[[target_i]], trait_source = traits$source[[target_i]],
+      trait_origin = traits$origin[[target_i]], rg = as.numeric(tab$rg), se = as.numeric(tab$se),
+      z = as.numeric(tab$z), p = as.numeric(tab$p))
+    fwrite(result, paste0(out_prefix, ".result.tsv"), sep = "\t", na = "")
+  }
+  message("LDSC task complete. Pairwise result files are saved in ", results_dir,
+          ". Run the aggregation job after all array tasks finish.")
+  quit(save = "no", status = 0L, runLast = FALSE)
 }
 
 combined <- fread(combined_manifest_path, sep = "\t", strip.white = FALSE, showProgress = FALSE)
@@ -119,7 +235,11 @@ munge_one <- function(path, phenotype, source, origin, index) {
   if (!file.exists(path)) stop("Input file missing for ", phenotype, ": ", path)
   prefix <- file.path(munged_dir, sprintf("%s_%03d_%s__%s", origin, index, safe_label(phenotype), safe_label(source)))
   expected <- paste0(prefix, ".sumstats.gz")
-  if (!file.exists(expected)) {
+  munged_is_complete <- file.exists(expected) && !is.na(file.info(expected)$size) &&
+    file.info(expected)$size > 0 &&
+    identical(as.integer(system2("gzip", c("-t", expected), stdout = FALSE, stderr = FALSE)), 0L)
+  if (!munged_is_complete) {
+    if (file.exists(expected)) unlink(expected)
     headers <- names(fread(path, nrows = 0L, showProgress = FALSE))
     sample_size_args <- if ("N" %in% headers) {
       c("--N-col", "N")
@@ -139,7 +259,7 @@ munge_one <- function(path, phenotype, source, origin, index) {
     if (is.null(status)) status <- 0L
     if (status != 0L) stop("munge_sumstats.py failed for ", phenotype, ":\n", paste(output, collapse = "\n"))
   }
-  if (!file.exists(expected)) stop("Munging did not create: ", expected)
+  if (!file.exists(expected) || file.info(expected)$size == 0) stop("Munging did not create a complete output: ", expected)
   sign_checks[[length(sign_checks) + 1L]] <<- check_sign_consistency(path, expected, phenotype)
   data.table(phenotype = phenotype, source = source, origin = origin,
              path = normalizePath(expected, mustWork = TRUE))
@@ -173,64 +293,15 @@ if (!any(traits$phenotype == "Loneliness isolation PanUKB")) {
   stop("Loneliness isolation PanUKB is not available as an LDSC-ready Primary input.")
 }
 
-# Give each input a stable label because LDSC reports input basenames in its result table.
-link_dir <- file.path(results_dir, "ldsc_inputs")
-dir.create(link_dir, recursive = TRUE, showWarnings = FALSE)
-traits[, ldsc_name := sprintf("trait_%03d_%s__%s", .I, safe_label(phenotype), safe_label(source))]
-traits[, ldsc_path := NA_character_]
-for (i in seq_len(nrow(traits))) {
-  link <- file.path(link_dir, paste0(traits$ldsc_name[[i]], ".sumstats.gz"))
-  if (file.exists(link) || nzchar(Sys.readlink(link))) unlink(link)
-  if (!file.symlink(traits$path[[i]], link)) stop("Could not create LDSC symlink: ", link)
-  traits$ldsc_path[[i]] <- link
-}
-fwrite(traits, file.path(results_dir, "ldsc_inputs_manifest.tsv"), sep = "\t", na = "")
-
-# Run only the requested loneliness-versus-one-trait pairs, not a full correlation matrix.
-anchor_i <- which(traits$phenotype == "Loneliness isolation PanUKB")
-others <- setdiff(seq_len(nrow(traits)), anchor_i)
-extract_rg_result <- function(log_path) {
-  if (!file.exists(log_path)) stop("LDSC did not create its log: ", log_path)
-  lines <- sub("^.*?INFO\\s+-\\s+", "", readLines(log_path, warn = FALSE), perl = TRUE)
-  marker <- grep("Summary of Genetic Correlation Results", lines, fixed = TRUE)
-  if (!length(marker)) stop("No genetic-correlation table found in: ", log_path)
-  block <- lines[seq.int(marker[[1L]] + 1L, length(lines))]
-  words <- strsplit(trimws(block), "\\s+")
-  header <- which(vapply(words, function(x) all(c("p1", "p2", "rg", "se", "z", "p") %in% tolower(x)), logical(1)))
-  if (!length(header)) stop("Could not identify the LDSC result-table header in: ", log_path)
-  h <- header[[1L]]
-  rows <- block[seq.int(h + 1L, length(block))]
-  row_words <- strsplit(trimws(rows), "\\s+")
-  keep <- vapply(row_words, function(x) length(x) >= 6L && grepl("^[-+0-9.eE]+$|^NA$|^nan$", x[[3L]], ignore.case = TRUE), logical(1))
-  if (!any(keep)) stop("No correlation row found in: ", log_path)
-  tab <- read.table(text = paste(c(block[[h]], rows[keep]), collapse = "\n"),
-                    header = TRUE, sep = "", check.names = FALSE, stringsAsFactors = FALSE,
-                    na.strings = c("NA", "nan"))
-  if (nrow(tab) != 1L) stop("Expected one LDSC pair in ", log_path, "; got ", nrow(tab), ".")
-  tab
-}
-results <- vector("list", length(others))
-for (j in seq_along(others)) {
-  target_i <- others[[j]]
-  out_prefix <- file.path(results_dir, sprintf("loneliness_%03d_%s", target_i, safe_label(traits$phenotype[[target_i]])))
-  cmd <- c(ldsc_py, "--rg", paste(traits$ldsc_path[c(anchor_i, target_i)], collapse = ","),
-           "--ref-ld-chr", ref_ld_chr, "--w-ld-chr", w_ld_chr, "--out", out_prefix)
-  console <- system2(python, cmd, stdout = TRUE, stderr = TRUE)
-  status <- attr(console, "status")
-  if (is.null(status)) status <- 0L
-  writeLines(console, paste0(out_prefix, ".console.log"))
-  if (status != 0L) stop("LDSC failed for ", traits$phenotype[[target_i]], "; see ", out_prefix, ".console.log")
-  tab <- extract_rg_result(paste0(out_prefix, ".log"))
-  results[[j]] <- data.table(
-    exposure = "Loneliness isolation PanUKB", exposure_source = traits$source[[anchor_i]],
-    trait = traits$phenotype[[target_i]], trait_source = traits$source[[target_i]],
-    trait_origin = traits$origin[[target_i]], rg = as.numeric(tab$rg), se = as.numeric(tab$se),
-    z = as.numeric(tab$z), p = as.numeric(tab$p))
-  message("Completed loneliness correlation with ", traits$phenotype[[target_i]])
-}
-results <- rbindlist(results, use.names = TRUE)
-results[, p_fdr := p.adjust(p, method = "BH")]
-setorder(results, p_fdr, p)
-fwrite(results, file.path(results_dir, "loneliness_isolation_rg_all_traits_fdr.tsv"), sep = "\t", na = "")
-fwrite(rbindlist(sign_checks, fill = TRUE), file.path(results_dir, "ldsc_sign_consistency.tsv"), sep = "\t", na = "")
-message("LDSC complete: ", nrow(results), " loneliness-isolation comparisons; results saved in ", results_dir)
+# Persist the prepared list and QC report on scratch. Stage two reads this
+# manifest directly and can be rerun without repeating successful munging.
+traits[, `:=`(ldsc_name = sprintf("trait_%03d_%s__%s", .I,
+                                  safe_label(phenotype), safe_label(source)),
+              ldsc_path = path)]
+input_manifest_path <- file.path(munged_dir, "ldsc_inputs_manifest.tsv")
+fwrite(traits, input_manifest_path, sep = "\t", na = "")
+fwrite(rbindlist(sign_checks, fill = TRUE),
+       file.path(munged_dir, "ldsc_sign_consistency.tsv"), sep = "\t", na = "")
+message("LDSC preparation complete: ", nrow(traits), " inputs listed in ", input_manifest_path)
+message("Submit submit_metal_primary_ldsc.sh next to run resumable correlations.")
+quit(save = "no", status = 0L, runLast = FALSE)

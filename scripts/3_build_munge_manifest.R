@@ -28,6 +28,7 @@ overrides_path      <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline
 out_dir             <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/munging"
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
+
 norm <- function(x) gsub("[^a-z0-9]", "", tolower(trimws(x)))
 
 neff_cc <- function(ncase, ncontrol) {
@@ -200,21 +201,3 @@ message("Wrote ", out_path, " (", nrow(out), " traits, ", n_flagged, " flagged)"
 if (n_flagged) {
   message("Flagged traits: ", paste(out$phenotype[out$flag != ""], collapse = "; "))
 }
-
-
-# check manifest is correct:
-suppressPackageStartupMessages(library(data.table))
-as_num <- function(x) suppressWarnings(as.numeric(gsub(",", "", as.character(x))))
-mm  <- fread("/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/munging/munge_manifest.tsv", na.strings = "NA")
-ref <- fread("https://docs.google.com/spreadsheets/d/1tJhUVb1uH2Eku4P_pMAYwJCagoFiO_nYxyqmdHUgAFk/export?format=csv", na.strings = c("", "NA", "N/A"))
-nca <- grep("^n case", names(ref), ignore.case = TRUE, value = TRUE)[1]
-nco <- grep("^n control", names(ref), ignore.case = TRUE, value = TRUE)[1]
-cmp <- merge(mm[, .(phenotype, file_ncase = n_case_median, file_ncontrol = n_control_median)],
-             ref[, .(phenotype, sheet_ncase = as.numeric(get(nca)), sheet_ncontrol = as.numeric(get(nco)))],
-             by = "phenotype")
-cmp[, mismatch := fifelse(is.na(sheet_ncase) & !is.na(file_ncase), "sheet NA but file has values",
-                          fifelse(!is.na(sheet_ncase) & is.na(file_ncase), "sheet has values but file NA",
-                                  fifelse(abs(file_ncase - sheet_ncase)/sheet_ncase > 0.01 |
-                                            abs(file_ncontrol - sheet_ncontrol)/sheet_ncontrol > 0.01,
-                                          "values differ", "ok")))]
-print(cmp[mismatch != "ok"])

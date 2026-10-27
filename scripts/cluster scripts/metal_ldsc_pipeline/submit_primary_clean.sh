@@ -4,7 +4,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
-#SBATCH --mem=32G
+#SBATCH --mem=64G
 #SBATCH --time=12:00:00
 #SBATCH --output=metal_primary_clean_%j.out
 #SBATCH --error=metal_primary_clean_%j.err

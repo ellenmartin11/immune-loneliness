@@ -108,3 +108,68 @@ output: html_document
 ![Loneliness Immune Biomarker Forest](loneliness_immune_biomarkers_standardized_forest.png)
 
 ***
+
+## Loneliness, Income x Sex Interacions in Biomarker Levels
+
+
+- For platelets, significant main effects of loneliness, sex and income, but no interactions
+- Main effect of income on all biomarkers
+- Main effect of sex on all biomarkers (but weak for neutrophils)
+- Main effect of loneliness on all biomarkers except Albumin (males only)
+- Sex x Income interaction for Basophils, CRP, Eosinophils, Monocytes & Triglycerides
+- Sex x Loneliness interaction for Albumin, Leukocytes, Monocytes, Neutrophils & Triglycerides
+- No sig. Loneliness x Income interactions
+- Plotting Estimated Marginal means from interaction models
+
+![Associations between loneliness and biomarker across income levels](biomarkers_loneliness_income/loneliness_immune_biomarker_income_sex.png)
+
+***
+
+### Albumin
+- Loneliness associated with albumin levels only among males, not females
+- Significant loneliness x male sex interaction (b = 0.063, p < 0.0001)
+
+![Association between loneliness and albumin levels among males vs females](biomarkers_loneliness_income/albumin_loneliness_emmeans_sex.png)
+
+***
+
+### Basophils
+- Loneliness associated with increased basophil levels.
+- Male sex associated with higher basophil levels than females, but sex-specific differences reduce as income increases.
+- Significant income x male sex interaction (b = -0.013, p = 0.008)
+
+![Sex-differences basophils reduce with increased income](biomarkers_loneliness_income/basophils_loneliness_emmeans_income.png)
+
+***
+
+### CRP
+- Loneliness associated with reduced CRP levels.
+- But this pattern is reversed among low income males (relative to high income males, and females)
+- Significant income x male sex interaction (b = -0.038, p < 0.001)
+
+![Reversed effect of loneliness on CRP among low income males](biomarkers_loneliness_income/crp_loneliness_emmeans_income.png)
+
+***
+
+### Eosinophils
+- Loneliness associated with reduced eosinophils
+- Significant main effect of income on eosinophil level (b = -0.022, p < 0.001)
+
+![Loneliness reduces eosinophil](biomarkers_loneliness_income/eosinophils_loneliness_emmeans_income.png)
+
+***
+
+### Leukocytes and Neutrophils
+- Loneliness associated with increased leukocytes and neutrophils
+- Significant loneliness x male sex interaction for leukocytes (b = -0.040, p < 0.001) and neutrophils (b = -0.029, p = 0.005)
+
+![Loneliness x male sex interaction in Leukocytes](biomarkers_loneliness_income/leukocyte_loneliness_emmeans_sex.png)
+![Loneliness x male sex interaction in Neutrophils](biomarkers_loneliness_income/neutrophils_loneliness_emmeans_sex.png)
+
+***
+
+
+
+
+
+

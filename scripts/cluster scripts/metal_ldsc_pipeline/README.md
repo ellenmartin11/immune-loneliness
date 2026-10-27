@@ -1,49 +1,80 @@
-# METAL IVW + LDSC workflow
+# METAL + LDSC workflow
 
-This is a separate three-job workflow for rows marked `METAL` and `Primary` in the Google Sheet containing sumstats for the Immune Biomarkers and Loneliness project.
+This folder contains the self-contained scripts for combining the specified METAL traits, preparing Primary and combined traits for LDSC, and estimating each trait’s genetic correlation with `Loneliness isolation PanUKB`.
 
-- This folder contains the scripts and local registry needed by all three jobs (1: cleaning and combining specific sumstats with METAL, 2: cleaning and munging sumstats for LDSC, 3: LDSC with loneliness). 
-- Update or replace that CSV in this folder when the pre-munged dataset registry changes; the jobs do not depend on `already_munged_ldsc`. 
-- Also don't need to manually update the csv to include munged data that occurred through using this script. The script will automatically check that. 
-- The cleaner accepts an optional analysis argument to select `Primary` rows and downloads linked public `.gz` inputs to scratch. Otherwise, it'll use local endpoints. The METAL jobs use raw summary statistics; LDSC-munged files do not have the effect/SE/allele detail needed for METAL. 
-- For METAL only, PanUKB inputs are lifted from GRCh37 to GRCh38 before combining with FinnGen. The Primary/LDSC branch is unchanged and may reuse the exact-name pre-munged files regardless of build, as requested.
+Copy the folder to:
 
-## Job order
+`/gpfs/gibbs/project/polimanti/ejm96/immune/scripts/cluster scripts/metal_ldsc_pipeline/`
 
-1. Submit `submit_metal_ivw.sh`. It prepares all rows marked `METAL`, runs the seven specified IVW combinations, and saves `combined_manifest.tsv` plus combined trait files under `/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/metal_ivw/`.
-2. Submit `submit_primary_clean.sh`. It processes only rows marked `Primary`, skips exact-match datasets in `already_munged.csv`, downloads linked files as needed, and writes the cleaning manifests under `/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/`.
-3. After both jobs succeed, submit `submit_metal_primary_ldsc.sh`. It treats the seven METAL-combined traits as members of the Primary analysis set, reuses eligible exact-name pre-munged Primary files, munges remaining inputs, and compares every trait with `Loneliness isolation PanUKB` under the project results directory.
+The pipeline uses raw sumstats for METAL. PanUKB METAL inputs are lifted from GRCh37 to GRCh38 before combining with FinnGen. Primary traits follow the existing LDSC path and may reuse exact-name pre-munged files from this folder’s `already_munged.csv`.
 
-The first two jobs may run in either order or concurrently. The LDSC job must wait for both to finish successfully.
+## Run order
 
-The Primary cleaner processes the coordinate-only GRCh37 GWAS Catalog `Lymphocyte Count` file in batches (default 250,000 rows) and caches completed rsID-lookup batches under `primary_clean/batch_cache/`.
-Keep the cache on scratch between attempts; completed batches are reused, while an interrupted/incomplete output is rebuilt from cached batches. The source file is still streamed from the beginning to find batch boundaries.
+1. Run `submit_metal_ivw.sh` and `submit_primary_clean.sh` (either order or concurrently).
+2. Run `qc_clean_sumstats.R` on both manifests as described below. Review QC reports before proceeding; this script reports but does not filter.
+3. Run `submit_metal_primary_munge.sh` after both QC reviews. It prepares or reuses LDSC-munged inputs and records sign-consistency diagnostics.
+4. Run `submit_metal_primary_ldsc.sh`; after the array completes, run `submit_metal_primary_ldsc_aggregate.sh` to check pair completeness and apply BH-FDR.
 
-## Outputs
+METAL and Primary cleaning can run in either order or concurrently. LDSC preparation requires both manifests; the correlation array requires LDSC preparation to finish; aggregation requires the full array to finish.
 
-- `metal_ivw/combined_manifest.tsv`: paths and sample sizes for the seven METAL outputs.
-- `primary_clean/primary_manifest.tsv` and `clean_manifest.tsv`: Primary trait registry and cleaned inputs.
-- `loneliness_isolation_rg_all_traits_fdr.tsv`: LDSC correlations for every Primary and METAL-combined trait against `Loneliness isolation PanUKB`, with BH-FDR values across this set of tests.
-- `ldsc_sign_consistency.tsv`: allele-aware comparison of input BETA signs against LDSC-munged Z signs for newly munged traits. Pre-munged inputs are marked as not checked because this step does not have their raw effect/allele columns.
+## Slurm job → R script map
 
-The METAL script maps coordinate-only FinnGen inputs to rsIDs using their GRCh38 coordinates. PanUKB files are streamed in batches (default 250,000 rows); each batch is mapped from GRCh37 coordinates to rsIDs and lifted to GRCh38 before being written. The finished batches are joined into the usual cleaned input file, so downstream METAL and LDSC manifests do not change. 
-`METAL_CHUNK_ROWS` before submission to use a different batch size. 
+| Slurm submission script | R script it runs | Purpose / where to edit |
+|---|---|---|
+| `submit_metal_ivw.sh` | `prepare_metal_ivw.R` | Selects `METAL` spreadsheet rows, prepares the two input datasets per pair, runs METAL IVW, and writes combined traits. Edit this R script for input parsing, liftover, duplicate handling, pair definitions, or METAL output handling. |
+| `submit_primary_clean.sh` | `clean_sumstats.R` | Selects `Primary` rows, reuses eligible exact-name pre-munged files, and cleans raw Primary inputs. Edit this R script for source formats, column mapping, cleaning, or batch/cache behavior. |
+| No dedicated Slurm wrapper currently | `qc_clean_sumstats.R` | Runs separately on each manifest to produce diagnostic QC summary and flag tables. Edit this R script to add or revise QC checks; it does not modify the sumstats. |
+| `submit_metal_primary_munge.sh` | `run_metal_primary_ldsc.R` with `prepare` mode | Combines the Primary and METAL manifests, reuses or creates munged files, and records sign checks. Edit `prepare` logic in the R script for LDSC input preparation. |
+| `submit_metal_primary_ldsc.sh` | `run_metal_primary_ldsc.R` with `rg` mode | Array job: runs one LDSC genetic correlation between the loneliness-isolation exposure and a comparison trait per task. Edit `rg` logic or the Slurm array/concurrency settings here. |
+| `submit_metal_primary_ldsc_aggregate.sh` | `aggregate_metal_primary_ldsc.R` | Checks expected pair outputs, combines results, and applies BH-FDR. Edit this R script for aggregation or multiple-testing behavior. |
 
-### Caching for Large Sumstats
-Completed PanUKB batches are cached under `metal_ivw/batch_cache/` on scratch and reused on reruns when the input file metadata, selected fields, sample size, and batch size match. The GRCh37-to-GRCh38 Ensembl chain is also cached there. 
-Keep this scratch cache to resume; changing the input, sample size, or batch size creates a separate cache. 
-The cache avoids repeating mapping and liftover for completed batches, although the source file is still streamed to find the batch boundaries.
+The `.sh` files define the Slurm resources, modules, paths, and which R script/mode is launched. The R files contain the analysis logic. Keep the mapping explicit if the workflow is reorganized.
 
-### Sumstats Fields and Genome References for METAL Lifting
-- The script recognizes PanUKB fields such as `beta_meta`, `se_meta`, and `pval_meta`. 
-- If all three EUR-specific effect fields (`beta_EUR`, `se_EUR`, and `pval_EUR`) are present, it uses that matching EUR trio; it does not mix an EUR P value with meta-analysis beta and SE. 
-- For `ref`/`alt` inputs, ALT is treated as the effect allele and REF as the other allele. 
-- Coordinate lookup and liftover require MungeSumstats, the GRCh37/GRCh38 SNPlocs and BSgenome reference packages, and access to the Ensembl chain file on the cluster. 
-- The job checks for these packages and prints their versions before processing. The script writes `metal_ivw/rsid_overlap_qc.tsv` with shared-ID counts and overlap fractions. METAL aligns effect direction using the alleles.
-- For PanUKB only, when an rsID occurs more than once, all rows for that duplicated ID are excluded and the log reports the number and examples; this avoids arbitrarily selecting one multiallelic/ambiguous effect.
-- Coordinate-only inputs are mapped against the source build’s reference (GRCh38 for FinnGen; GRCh37 for PanUKB) before the shared-rsID comparison.
+## QC before LDSC
 
-### LDSC and Final Sample Size
-- The combined LDSC sample size is set to the sum of the two cohort sample sizes, so this assumes the cohorts do not overlap - this was checked when the sumstats sheet was prepared and is why we're mostly combining PanUKB and FinnGen (which are independent cohorts). 
-- The LDSC job runs one exposure-versus-trait comparison at a time and does not calculate correlations among the other traits.
-- Might extend/add a new job that lets us compute the entire correlation matrix and build a heatmap. 
+Load the same R module used by the jobs, then run `qc_clean_sumstats.R` once per manifest:
+
+```bash
+PROJECT_DIR="/gpfs/gibbs/project/polimanti/ejm96/immune"
+SCRIPT_DIR="${PROJECT_DIR}/scripts/cluster scripts/metal_ldsc_pipeline"
+BASE="/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline"
+module load R/4.4.1-foss-2022b
+Rscript "${SCRIPT_DIR}/qc_clean_sumstats.R" \
+  "${BASE}/primary_clean/clean_manifest.tsv" \
+  "${BASE}/primary_clean/pre_ldsc_qc" \
+  "/gpfs/gibbs/pi/polimanti/LDSC_files/eur_w_ld_chr/w_hm3.snplist"
+
+Rscript "${SCRIPT_DIR}/qc_clean_sumstats.R" \
+  "${BASE}/metal_ivw/combined_manifest.tsv" \
+  "${BASE}/metal_ivw/pre_ldsc_qc" \
+  "/gpfs/gibbs/pi/polimanti/LDSC_files/eur_w_ld_chr/w_hm3.snplist"
+```
+
+Set `SCRIPT_DIR` to the copied pipeline folder and `BASE` to `/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline`. Each run writes `pre_ldsc_qc_summary.tsv` and `pre_ldsc_qc_flags.tsv`. The QC script checks IDs/duplicates, alleles, effect and association fields, sample size, coordinates, available INFO/frequency fields, sign agreement when both BETA/SE and Z are present, and HapMap3 overlap. It reports findings but does not decide universal thresholds or filter variants.
+
+## Standardized QC: proposed staged approach
+
+Treat QC as a documented review with source-specific thresholds, not a single pass/fail number. Apply the same framework to cleaned Primary and METAL-combined traits, while retaining distinct checks for how each was produced.
+
+1. **Provenance and compatibility:** record source, ancestry, genome build, phenotype definition, sample/case-control counts, effect scale, and any cohort overlap. Confirm build and ancestry are appropriate for the intended LDSC reference; document any exceptions.
+2. **Variant and field integrity:** check required fields, missingness, valid alleles, finite effects/SE/P values, plausible N, unique SNP IDs, and coordinate/rsID consistency. Review allele orientation and any available beta-versus-Z sign checks.
+3. **Association-statistic QC:** inspect P-value distributions and precision, effect/SE consistency, allele frequencies and INFO when available, extreme effects, and variant counts before/after filtering. Compare against source documentation rather than applying one arbitrary cutoff to every study.
+4. **Combination-specific QC:** for METAL traits, report input and shared-variant counts, duplicate handling, allele alignment, heterogeneity statistics, and sample-size assumptions. Check that combined effects and SE/P values are valid and that the combined file has unique IDs.
+5. **LDSC readiness and diagnostics:** confirm usable HapMap3 overlap, adequate SNP counts, correct munging/sample-size settings, and inspect LDSC SNP-h2, intercept, attenuation ratio, and standard errors before interpreting genetic correlations. For later GenomicSEM, also assess the genetic covariance matrix for convergence/positive definiteness and document liability-scale inputs for binary traits.
+
+The present QC script covers much of stages 2 and 5’s input readiness, but not every item above (notably source-specific threshold decisions, METAL heterogeneity review, or LDSC model diagnostics). The next useful addition is a single QC summary that joins the per-trait QC reports, METAL overlap/heterogeneity outputs, and LDSC h2 diagnostics, while leaving filtering decisions explicit and reviewable.
+
+## Key outputs
+
+- `metal_ivw/combined_manifest.tsv`, combined sumstats, and `rsid_overlap_qc.tsv`.
+- `primary_clean/clean_manifest.tsv`, `primary_manifest.tsv`, and cleaned sumstats.
+- `primary_clean/pre_ldsc_qc/` and `metal_ivw/pre_ldsc_qc/`: QC summaries and flags.
+- `munged_ldsc/ldsc_inputs_manifest.tsv` and `ldsc_sign_consistency.tsv`.
+- `results/pairwise_ldsc/metal_pipeline/`: per-pair results and the final loneliness-isolation correlation table with BH-FDR.
+
+## Operational notes
+
+- `prepare_metal_ivw.R` uses PanUKB’s matching EUR effect/SE/P fields when available; it does not mix EUR effects with meta-analysis P values. For `ref`/`alt` inputs, ALT is treated as the effect allele. PanUKB data are lifted to GRCh38; FinnGen coordinate-only inputs are mapped using GRCh38.
+- METAL inputs are restricted to shared rsIDs. Duplicated rsIDs are excluded rather than arbitrarily selecting one row. The combined N is the sum of cohort Ns, assuming no sample overlap.
+- PanUKB and coordinate-only Primary files are processed in batches with resumable scratch caches. Keep those caches between reruns. `METAL_CHUNK_ROWS`, `METAL_FINGEN_CHUNK_ROWS`, and `CLEAN_CHUNK_ROWS` adjust batch sizes.
+- LDSC preparation requests 64 GB RAM; each correlation task requests 16 GB. The Slurm array concurrency is capped at four; adjust only if your allocation permits.
