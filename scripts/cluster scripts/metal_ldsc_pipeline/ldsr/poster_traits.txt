@@ -1,0 +1,31 @@
+phenotype
+ADHD PGC
+Allergic rhinitis FinnGen
+Anorexia Nervosa PGC
+Asthma Multi
+Anxiety Disorder PGC
+Atopic dermatitis
+Bipolar PGC
+BMI GIANT
+Crohn disease
+Depression PGC
+Educational Attainment
+Lymphocyte Count
+OCD
+PTSD
+Rheumatoid Arthritis FinnGen
+Income
+Ulcerative colitis FinnGen
+Basophil Count PanUKB
+Hypothyroidism
+Schizophrenia PGC
+Loneliness isolation PanUKB
+Type 2 Diabetes
+White blood cell count Mixed
+Albumin
+C-reactive protein
+Eosinophil Count
+Monocytes
+Neutrophils
+Platelet Count
+Triglycerides
