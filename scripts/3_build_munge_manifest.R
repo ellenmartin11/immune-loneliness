@@ -2,11 +2,12 @@
 
 # Build the sample-size manifest for the LDSC munging step.
 #
-# Sample sizes are taken from the CLEANED files themselves (per-SNP N, N_CASE, N_CONTROL medians), which are the ground truth for what munging will see. 
-# Curated paper-verified values in n_overrides.tsv take precedenceand are cross-checked against the file; any disagreement >25% is flagged, not silently resolved.
-#
-# Usage: Rscript 3_build_munge_manifest.R 
-#
+# Sample sizes are taken from the CLEANED files themselves (per-SNP N,
+# N_CASE, N_CONTROL medians), which are the ground truth for what munging
+# will see. Curated paper-verified values in n_overrides.tsv take precedence
+# and are cross-checked against the file; any disagreement >25% is flagged,
+# not silently resolved.
+##
 # Output: <out_dir>/munge_manifest.tsv with one row per phenotype:
 #   phenotype, clean_path, trait_type, n_policy,
 #   n_median, n_case_median, n_control_median, neff_median (from file),
@@ -19,15 +20,11 @@
 
 suppressPackageStartupMessages(library(data.table))
 
-#args <- commandArgs(trailingOnly = TRUE)
-#if (length(args) < 3L) {
- # stop("Usage: build_munge_manifest.R <clean_manifest.tsv> <n_overrides.tsv> <out_dir>")
-#}
-clean_manifest_path <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/clean_manifest.tsv"
-overrides_path      <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/n_overrides.tsv"
-out_dir             <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/munging"
-dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
+clean_manifest_path <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/clean_manifest_all.tsv"
+overrides_path      <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/n_overrides.tsv"
+out_dir             <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munge_manifest"
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 norm <- function(x) gsub("[^a-z0-9]", "", tolower(trimws(x)))
 
@@ -99,7 +96,7 @@ for (i in seq_len(nrow(manifest))) {
   # Constant (fabricated) case/control columns: a single distinct value with
   # no variation is a sheet-filled placeholder, not per-SNP data.
   is_constant <- function(x) {
-    !is.null(x) && length(unique(na.omit(x))) <= 1L
+    !is.null(x) && length(na.omit(x)) > 0L && length(unique(na.omit(x))) <= 1L
   }
   nc_constant <- "N_CASE" %in% names(sz) && is_constant(sz$N_CASE)
   nt_constant <- "N_CONTROL" %in% names(sz) && is_constant(sz$N_CONTROL)

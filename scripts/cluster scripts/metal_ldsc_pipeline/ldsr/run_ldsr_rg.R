@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-# run_ldsr_rg.R -- pairwise LDSC genetic correlations for the SOBP poster trait set
+# run_ldsr_rg.R -- pairwise LDSC genetic correlations for the poster trait set
 #
 # Runs ldsc.py --rg for every pair of traits in the traits file, then parses
 # the logs into a long table and a symmetric rg matrix.
@@ -12,7 +12,8 @@
 #   LDSR_FILTER="Loneliness|CRP" Rscript run_ldsr_rg.R   # quick smoke test
 #   LDSR_DRY_RUN=1 Rscript run_ldsr_rg.R
 #
-# Env vars: same as run_ldsr_h2.R, plus
+# Env vars: same as run_ldsr_h2.R (LDSR_TRAITS optional; defaults to the
+#                  manifest phenotypes), plus
 #   LDSR_MAX_PAIRS  cap on number of pairs, after lexicographic sort
 #
 # Outputs in OUT_DIR:
@@ -24,7 +25,7 @@ suppressPackageStartupMessages(library(data.table))
 suppressPackageStartupMessages(library(parallel))
 
 here        <- function(x) file.path(getwd(), x)
-traits_file <- Sys.getenv("LDSR_TRAITS",    unset = "poster_traits.txt")
+traits_file <- Sys.getenv("LDSR_TRAITS",    unset = "")  # empty = use POSTER_MANIFEST phenotypes
 manifest_f  <- Sys.getenv("POSTER_MANIFEST",unset = "munge_manifest_poster.tsv")
 munged_dir  <- sub("/$", "", Sys.getenv("MUNGED_DIR",  unset = here("munged")))
 ldsc_dir    <- sub("/$", "", Sys.getenv("LDSC_DIR",    unset = here("ldsc_py3")))
@@ -37,12 +38,15 @@ dry_run     <- Sys.getenv("LDSR_DRY_RUN",  unset = "0") == "1"
 filter_str  <- Sys.getenv("LDSR_FILTER",   unset = "")
 max_pairs   <- Sys.getenv("LDSR_MAX_PAIRS", unset = "")
 
-for (f in c(traits_file, manifest_f)) {
-  if (!file.exists(f)) stop("Required file not found: ", f, "\n(Set LDSR_TRAITS / POSTER_MANIFEST)")
+if (nchar(traits_file) > 0 && !file.exists(traits_file)) {
+  stop("LDSR_TRAITS file not found: ", traits_file)
 }
-traits <- fread(traits_file, header = FALSE)$V1
-man    <- fread(manifest_f)
+if (!file.exists(manifest_f)) {
+  stop("Required file not found: ", manifest_f, "\n(Set POSTER_MANIFEST)")
+}
+man <- fread(manifest_f)
 stopifnot(all(c("phenotype", "n_policy") %in% names(man)))
+traits <- if (nchar(traits_file) > 0) fread(traits_file, header = FALSE)$V1 else man$phenotype
 
 if (nchar(filter_str) > 0) {
   keep <- strsplit(filter_str, "[ ,]+")[[1]]
@@ -50,6 +54,11 @@ if (nchar(filter_str) > 0) {
 }
 traits <- traits[file.exists(file.path(munged_dir, paste0(gsub("\\s+", "_", traits), ".sumstats.gz")))]
 if (length(traits) < 2) stop("Need >= 2 traits with munged sumstats in ", munged_dir)
+
+## ---- environment guard: R startup can set PYTHONPATH/PYTHONHOME and
+##      break the spawned python (py3.8 bundle shadows the venv); sanitize ----
+Sys.unsetenv("PYTHONPATH")
+Sys.unsetenv("PYTHONHOME")
 
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
@@ -67,7 +76,7 @@ if (nchar(max_pairs) > 0) {
 cmds <- apply(pairs, 2, function(idx) {
   i <- idx[1]; j <- idx[2]
   cc <- is_cc[phenotype %in% traits[c(i, j)], any(is_cc)]
-  prev <- if (isTRUE(cc)) " --samp-prev 0.5 --pop-prev 0.5" else ""
+  prev <- if (isTRUE(cc)) " --samp-prev 0.5,0.5 --pop-prev 0.5,0.5" else ""
   sprintf("%s %s --rg %s,%s --ref-ld-chr %s/ --w-ld-chr %s/ --out %s/%s__%s%s",
           py, file.path(ldsc_dir, "ldsc.py"),
           file.path(munged_dir, paste0(s_names[i], ".sumstats.gz")),

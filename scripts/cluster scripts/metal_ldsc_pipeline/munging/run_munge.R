@@ -126,6 +126,13 @@ for (j in jobs) {
 }
 if (dry_run) cat("Dry run — nothing executed.\n")
 
+## ---- environment guard: R startup can set PYTHONPATH/PYTHONHOME and
+##      clobber LD_LIBRARY_PATH; sanitize before spawning python ----
+Sys.unsetenv("PYTHONPATH")
+Sys.unsetenv("PYTHONHOME")
+ldl <- Sys.getenv("MUNGE_LD_LIBRARY_PATH", unset = "")
+if (nzchar(ldl)) Sys.setenv(LD_LIBRARY_PATH = paste(ldl, Sys.getenv("LD_LIBRARY_PATH"), sep = ":"))
+
 ## ---- execution ----
 run_one <- function(j) {
   err_file <- paste0(j$out_prefix, ".stderr")

@@ -13,8 +13,8 @@
 #   LDSR_DRY_RUN=1 Rscript run_ldsr_h2.R                # print commands only
 #
 # Env vars (defaults in parentheses):
-#   LDSR_TRAITS    file with one phenotype per line, matching the manifest
-#                  (poster_traits.txt next to this script)
+#   LDSR_TRAITS    optional file with one phenotype per line;
+#                  omit to use all phenotypes in POSTER_MANIFEST
 #   POSTER_MANIFEST  manifest with phenotype + n_policy columns
 #                  (munge_manifest_poster.tsv next to this script)
 #   MUNGED_DIR     dir with <Trait>.sumstats.gz  (munged/ under cwd)
@@ -31,7 +31,7 @@ suppressPackageStartupMessages(library(data.table))
 suppressPackageStartupMessages(library(parallel))
 
 here        <- function(x) file.path(getwd(), x)
-traits_file <- Sys.getenv("LDSR_TRAITS",    unset = "poster_traits.txt")
+traits_file <- Sys.getenv("LDSR_TRAITS",    unset = "")  # empty = use POSTER_MANIFEST phenotypes
 manifest_f  <- Sys.getenv("POSTER_MANIFEST",unset = "munge_manifest_poster.tsv")
 munged_dir  <- sub("/$", "", Sys.getenv("MUNGED_DIR",  unset = here("munged")))
 ldsc_dir    <- sub("/$", "", Sys.getenv("LDSC_DIR",    unset = here("ldsc_py3")))
@@ -43,12 +43,15 @@ n_cores     <- as.integer(Sys.getenv("LDSR_CORES", unset = "6"))
 dry_run     <- Sys.getenv("LDSR_DRY_RUN",  unset = "0") == "1"
 filter_str  <- Sys.getenv("LDSR_FILTER",   unset = "")
 
-for (f in c(traits_file, manifest_f)) {
-  if (!file.exists(f)) stop("Required file not found: ", f, "\n(Set LDSR_TRAITS / POSTER_MANIFEST)")
+if (nchar(traits_file) > 0 && !file.exists(traits_file)) {
+  stop("LDSR_TRAITS file not found: ", traits_file)
 }
-traits <- fread(traits_file, header = FALSE)$V1
-man    <- fread(manifest_f)
+if (!file.exists(manifest_f)) {
+  stop("Required file not found: ", manifest_f, "\n(Set POSTER_MANIFEST)")
+}
+man <- fread(manifest_f)
 stopifnot(all(c("phenotype", "n_policy") %in% names(man)))
+traits <- if (nchar(traits_file) > 0) fread(traits_file, header = FALSE)$V1 else man$phenotype
 
 if (nchar(filter_str) > 0) {
   keep <- strsplit(filter_str, "[ ,]+")[[1]]
@@ -56,6 +59,11 @@ if (nchar(filter_str) > 0) {
 }
 traits <- traits[file.exists(file.path(munged_dir, paste0(gsub("\\s+", "_", traits), ".sumstats.gz")))]
 if (length(traits) == 0) stop("No munged .sumstats.gz found for the requested traits in ", munged_dir)
+
+## ---- environment guard: R startup can set PYTHONPATH/PYTHONHOME and
+##      break the spawned python (py3.8 bundle shadows the venv); sanitize ----
+Sys.unsetenv("PYTHONPATH")
+Sys.unsetenv("PYTHONHOME")
 
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
