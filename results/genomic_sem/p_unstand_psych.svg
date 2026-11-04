@@ -29,92 +29,71 @@
 <rect x='0.00' y='0.000000000000057' width='576.00' height='432.00' style='stroke-width: 1.07; stroke: #FFFFFF; fill: #FFFFFF;' />
 </g>
 <defs>
-  <clipPath id='cpNjEuODJ8NTcwLjUyfDM5LjExfDQwMC4yOQ=='>
-    <rect x='61.82' y='39.11' width='508.70' height='361.18' />
+  <clipPath id='cpNTMuNTB8NTcwLjUyfDM5LjExfDQwMC4yOQ=='>
+    <rect x='53.50' y='39.11' width='517.02' height='361.18' />
   </clipPath>
 </defs>
-<g clip-path='url(#cpNjEuODJ8NTcwLjUyfDM5LjExfDQwMC4yOQ==)'>
-<rect x='61.82' y='39.11' width='508.70' height='361.18' style='stroke-width: 1.07; stroke: none; fill: #FFFFFF;' />
-<polyline points='127.16,400.29 127.16,39.11 ' style='stroke-width: 1.07; stroke: #D9D9D9; stroke-linecap: butt;' />
-<polyline points='273.31,400.29 273.31,39.11 ' style='stroke-width: 1.07; stroke: #D9D9D9; stroke-linecap: butt;' />
-<polyline points='419.47,400.29 419.47,39.11 ' style='stroke-width: 1.07; stroke: #D9D9D9; stroke-linecap: butt;' />
-<polyline points='565.62,400.29 565.62,39.11 ' style='stroke-width: 1.07; stroke: #D9D9D9; stroke-linecap: butt;' />
-<line x1='273.31' y1='400.29' x2='273.31' y2='39.11' style='stroke-width: 1.07; stroke: #7F7F7F; stroke-dasharray: 5.69,5.69; stroke-linecap: butt;' />
-<polyline points='517.56,134.36 517.56,127.99 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='517.56,131.18 421.13,131.18 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='421.13,134.36 421.13,127.99 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='547.40,63.54 547.40,57.17 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='547.40,60.36 479.12,60.36 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='479.12,63.54 479.12,57.17 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='537.50,98.95 537.50,92.58 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='537.50,95.77 453.46,95.77 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='453.46,98.95 453.46,92.58 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='490.94,169.77 490.94,163.40 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='490.94,166.59 340.73,166.59 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='340.73,169.77 340.73,163.40 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='410.39,346.83 410.39,340.45 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='410.39,343.64 143.01,343.64 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='143.01,346.83 143.01,340.45 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='386.68,311.42 386.68,305.04 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='386.68,308.23 231.28,308.23 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='231.28,311.42 231.28,305.04 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='419.68,240.60 419.68,234.22 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='419.68,237.41 263.97,237.41 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='263.97,240.60 263.97,234.22 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='454.25,276.01 454.25,269.63 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='454.25,272.82 219.31,272.82 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='219.31,276.01 219.31,269.63 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='149.79,382.24 149.79,375.86 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='149.79,379.05 84.94,379.05 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='84.94,382.24 84.94,375.86 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='441.83,205.18 441.83,198.81 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='441.83,202.00 349.43,202.00 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='349.43,205.18 349.43,198.81 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<circle cx='469.34' cy='131.18' r='3.34' style='stroke-width: 0.71; fill: #000000;' />
-<circle cx='513.26' cy='60.36' r='3.34' style='stroke-width: 0.71; fill: #000000;' />
-<circle cx='495.48' cy='95.77' r='3.34' style='stroke-width: 0.71; fill: #000000;' />
-<circle cx='415.83' cy='166.59' r='3.34' style='stroke-width: 0.71; fill: #000000;' />
-<circle cx='276.70' cy='343.64' r='3.34' style='stroke-width: 0.71; fill: #000000;' />
-<circle cx='308.98' cy='308.23' r='3.34' style='stroke-width: 0.71; fill: #000000;' />
-<circle cx='341.82' cy='237.41' r='3.34' style='stroke-width: 0.71; fill: #000000;' />
-<circle cx='336.78' cy='272.82' r='3.34' style='stroke-width: 0.71; fill: #000000;' />
-<circle cx='117.36' cy='379.05' r='3.34' style='stroke-width: 0.71; fill: #000000;' />
-<circle cx='395.63' cy='202.00' r='3.34' style='stroke-width: 0.71; fill: #000000;' />
+<g clip-path='url(#cpNTMuNTB8NTcwLjUyfDM5LjExfDQwMC4yOQ==)'>
+<rect x='53.50' y='39.11' width='517.02' height='361.18' style='stroke-width: 1.07; stroke: none; fill: #FFFFFF;' />
+<polyline points='61.16,400.29 61.16,39.11 ' style='stroke-width: 1.07; stroke: #D9D9D9; stroke-linecap: butt;' />
+<polyline points='228.47,400.29 228.47,39.11 ' style='stroke-width: 1.07; stroke: #D9D9D9; stroke-linecap: butt;' />
+<polyline points='395.78,400.29 395.78,39.11 ' style='stroke-width: 1.07; stroke: #D9D9D9; stroke-linecap: butt;' />
+<polyline points='563.09,400.29 563.09,39.11 ' style='stroke-width: 1.07; stroke: #D9D9D9; stroke-linecap: butt;' />
+<line x1='228.47' y1='400.29' x2='228.47' y2='39.11' style='stroke-width: 1.07; stroke: #7F7F7F; stroke-dasharray: 5.69,5.69; stroke-linecap: butt;' />
+<polyline points='504.23,157.60 504.23,149.67 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='504.23,153.63 390.86,153.63 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='390.86,157.60 390.86,149.67 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='547.02,69.50 547.02,61.58 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='547.02,65.54 468.35,65.54 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='468.35,69.50 468.35,61.58 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='531.87,113.55 531.87,105.62 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='531.87,109.59 435.35,109.59 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='435.35,113.55 435.35,105.62 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='479.21,201.64 479.21,193.72 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='479.21,197.68 307.45,197.68 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='307.45,201.64 307.45,193.72 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='387.04,377.83 387.04,369.90 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='387.04,373.87 77.00,373.87 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='77.00,377.83 77.00,369.90 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='357.97,333.78 357.97,325.86 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='357.97,329.82 182.02,329.82 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='182.02,333.78 182.02,325.86 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='397.49,245.69 397.49,237.76 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='397.49,241.73 220.36,241.73 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='220.36,245.69 220.36,237.76 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='435.69,289.74 435.69,281.81 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='435.69,285.77 171.62,285.77 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='171.62,289.74 171.62,281.81 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<circle cx='447.54' cy='153.63' r='3.34' style='stroke-width: 0.71; fill: #000000;' />
+<circle cx='507.69' cy='65.54' r='3.34' style='stroke-width: 0.71; fill: #000000;' />
+<circle cx='483.61' cy='109.59' r='3.34' style='stroke-width: 0.71; fill: #000000;' />
+<circle cx='393.33' cy='197.68' r='3.34' style='stroke-width: 0.71; fill: #000000;' />
+<circle cx='232.02' cy='373.87' r='3.34' style='stroke-width: 0.71; fill: #000000;' />
+<circle cx='270.00' cy='329.82' r='3.34' style='stroke-width: 0.71; fill: #000000;' />
+<circle cx='308.92' cy='241.73' r='3.34' style='stroke-width: 0.71; fill: #000000;' />
+<circle cx='303.65' cy='285.77' r='3.34' style='stroke-width: 0.71; fill: #000000;' />
 </g>
 <g clip-path='url(#cpMC4wMHw1NzYuMDB8MC4wMHw0MzIuMDA=)'>
-<polyline points='61.82,400.29 61.82,39.11 ' style='stroke-width: 1.07; stroke-linecap: square;' />
-<text x='56.89' y='382.26' text-anchor='end' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='51.41px' lengthAdjust='spacingAndGlyphs'>INCOME ***</text>
-<text x='56.89' y='346.85' text-anchor='end' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='13.94px' lengthAdjust='spacingAndGlyphs'>BIP</text>
-<text x='56.89' y='311.44' text-anchor='end' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='45.83px' lengthAdjust='spacingAndGlyphs'>ANOREXIA</text>
-<text x='56.89' y='276.03' text-anchor='end' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='17.75px' lengthAdjust='spacingAndGlyphs'>SCZ</text>
-<text x='56.89' y='240.62' text-anchor='end' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='19.84px' lengthAdjust='spacingAndGlyphs'>OCD</text>
-<text x='56.89' y='205.21' text-anchor='end' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='32.23px' lengthAdjust='spacingAndGlyphs'>BMI ***</text>
-<text x='56.89' y='169.80' text-anchor='end' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='42.20px' lengthAdjust='spacingAndGlyphs'>ADHD ***</text>
-<text x='56.89' y='134.39' text-anchor='end' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='34.64px' lengthAdjust='spacingAndGlyphs'>ANX ***</text>
-<text x='56.89' y='98.98' text-anchor='end' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='39.06px' lengthAdjust='spacingAndGlyphs'>PTSD ***</text>
-<text x='56.89' y='63.56' text-anchor='end' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='33.67px' lengthAdjust='spacingAndGlyphs'>DEP ***</text>
-<polyline points='59.08,379.05 61.82,379.05 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='59.08,343.64 61.82,343.64 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='59.08,308.23 61.82,308.23 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='59.08,272.82 61.82,272.82 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='59.08,237.41 61.82,237.41 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='59.08,202.00 61.82,202.00 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='59.08,166.59 61.82,166.59 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='59.08,131.18 61.82,131.18 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='59.08,95.77 61.82,95.77 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='59.08,60.36 61.82,60.36 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='61.82,400.29 570.52,400.29 ' style='stroke-width: 1.07; stroke-linecap: square;' />
-<polyline points='127.16,403.03 127.16,400.29 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='273.31,403.03 273.31,400.29 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='419.47,403.03 419.47,400.29 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<polyline points='565.62,403.03 565.62,400.29 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
-<text x='127.16' y='411.64' text-anchor='middle' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='22.75px' lengthAdjust='spacingAndGlyphs'>-0.02</text>
-<text x='273.31' y='411.64' text-anchor='middle' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='19.58px' lengthAdjust='spacingAndGlyphs'>0.00</text>
-<text x='419.47' y='411.64' text-anchor='middle' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='19.58px' lengthAdjust='spacingAndGlyphs'>0.02</text>
-<text x='565.62' y='411.64' text-anchor='middle' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='19.58px' lengthAdjust='spacingAndGlyphs'>0.04</text>
-<text x='316.17' y='424.23' text-anchor='middle' style='font-size: 11.00px; font-family: "DejaVu Sans";' textLength='193.02px' lengthAdjust='spacingAndGlyphs'>Genetic association with loneliness</text>
-<text x='61.82' y='31.34' style='font-size: 11.00px; font-family: "DejaVu Sans";' textLength='299.23px' lengthAdjust='spacingAndGlyphs'>Adjusting for Income, BMI and Psychiatric Comorbidity</text>
-<text x='61.82' y='15.10' style='font-size: 13.20px; font-family: "DejaVu Sans";' textLength='405.50px' lengthAdjust='spacingAndGlyphs'>Genomic SEM: Loneliness (PanUKB) and Psychiatric Disorders</text>
+<text x='51.31' y='377.07' text-anchor='end' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='13.94px' lengthAdjust='spacingAndGlyphs'>BIP</text>
+<text x='51.31' y='333.03' text-anchor='end' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='45.83px' lengthAdjust='spacingAndGlyphs'>ANOREXIA</text>
+<text x='51.31' y='288.98' text-anchor='end' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='17.75px' lengthAdjust='spacingAndGlyphs'>SCZ</text>
+<text x='51.31' y='244.93' text-anchor='end' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='19.84px' lengthAdjust='spacingAndGlyphs'>OCD</text>
+<text x='51.31' y='200.89' text-anchor='end' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='42.20px' lengthAdjust='spacingAndGlyphs'>ADHD ***</text>
+<text x='51.31' y='156.84' text-anchor='end' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='34.64px' lengthAdjust='spacingAndGlyphs'>ANX ***</text>
+<text x='51.31' y='112.79' text-anchor='end' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='39.06px' lengthAdjust='spacingAndGlyphs'>PTSD ***</text>
+<text x='51.31' y='68.75' text-anchor='end' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='33.67px' lengthAdjust='spacingAndGlyphs'>DEP ***</text>
+<polyline points='53.50,400.29 570.52,400.29 ' style='stroke-width: 1.07; stroke-linecap: square;' />
+<polyline points='61.16,403.03 61.16,400.29 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='228.47,403.03 228.47,400.29 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='395.78,403.03 395.78,400.29 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<polyline points='563.09,403.03 563.09,400.29 ' style='stroke-width: 1.07; stroke-linecap: butt;' />
+<text x='61.16' y='411.64' text-anchor='middle' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='22.75px' lengthAdjust='spacingAndGlyphs'>-0.02</text>
+<text x='228.47' y='411.64' text-anchor='middle' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='19.58px' lengthAdjust='spacingAndGlyphs'>0.00</text>
+<text x='395.78' y='411.64' text-anchor='middle' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='19.58px' lengthAdjust='spacingAndGlyphs'>0.02</text>
+<text x='563.09' y='411.64' text-anchor='middle' style='font-size: 8.80px; font-family: "DejaVu Sans";' textLength='19.58px' lengthAdjust='spacingAndGlyphs'>0.04</text>
+<text x='312.01' y='424.23' text-anchor='middle' style='font-size: 11.00px; font-family: "DejaVu Sans";' textLength='193.02px' lengthAdjust='spacingAndGlyphs'>Genetic association with loneliness</text>
+<text x='53.50' y='31.34' style='font-size: 11.00px; font-family: "DejaVu Sans";' textLength='299.23px' lengthAdjust='spacingAndGlyphs'>Adjusting for Income, BMI and Psychiatric Comorbidity</text>
+<text x='53.50' y='15.10' style='font-size: 13.20px; font-family: "DejaVu Sans";' textLength='405.50px' lengthAdjust='spacingAndGlyphs'>Genomic SEM: Loneliness (PanUKB) and Psychiatric Disorders</text>
 </g>
 </g>
 </svg>

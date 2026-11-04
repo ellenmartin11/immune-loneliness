@@ -6,26 +6,30 @@ output: html_document
 ---
 
 ## GenomicSEM Loneliness and Immune Conditions
-- 
+- Specifies main adjusted multivariate regression models between loneliness and immune conditions, psych conditions and immune biomarkers (+covariates)
+- Can either specify manually (like I did here) or can use genomicsem_1_interactive.R to specify each individual model
+- genomicsem_2_mediation.R allows specification of multiple possible mediation models 
+- this project only focuses on triglycerides, neutrophils, crp and il-6 based on results of adjusted modelling
+- next interesting candidate to look at is neuroticism, which is associated with loneliness and may be linked to immune function too
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-### Import Data and Load GenomicSEM
+#### Import Data and Load GenomicSEM
 ```{r read output from cluster}
 library(GenomicSEM)
 
 ```
 
-### Sanity Check Matrix
+#### Sanity Check Matrix
 ```{r sanity}
 covstruc <- readRDS("/vast/palmer/scratch/polimanti/ejm96/genomic_sem/LDSCoutput.rds")
 round(covstruc$S, 3)
 covstruc$N
 ```
 
-### Checking Correlations and QC of GenomicSEM LDSC
+#### Checking Correlations and QC of GenomicSEM LDSC
 
 - AoU Loneliness has a strong correlation with PanUKB Loneliness isolation (rg = 0.791)
 ```{r AoU and PanUKB Loneliness rg}
@@ -75,7 +79,7 @@ fit_psych_adjusted <- GenomicSEM::usermodel(
 
 fit_psych_adjusted
 ```
-
+- loneliness has widespread associations with anxiety, depression, ptsd, adhd, income and bmi
 ```{r forest plot}
 library(ggplot2)
 
@@ -109,6 +113,11 @@ trait_order <- plot_data$rhs[
   order(plot_data$Unstand_Est)
 ]
 plot_data$rhs <- factor(plot_data$rhs, levels = trait_order)
+
+plot_data <- subset(
+  plot_data,
+  !as.character(rhs) %in% c("BMI_F", "INCOME_F")
+)
 
 # pvalue asterisks
 # Convert GenomicSEM p-values to numeric; it may report tiny values as "< 5e-300".
@@ -246,7 +255,7 @@ ggplot(plot_data, aes(x = STD_Genotype, y = rhs)) +
     panel.grid.major.y = element_blank()
   )
 ```
-### Sensitivity Analyses using just one of the internalizing disorders
+#### Sensitivity Analyses using just one of the internalizing disorders
 
 ```{r psych adjusted dep}
 # setting these to latent factors so GenomicSEM works 
@@ -404,6 +413,11 @@ trait_order <- plot_data$rhs[
 ]
 plot_data$rhs <- factor(plot_data$rhs, levels = trait_order)
 
+plot_data <- subset(
+  plot_data,
+  !as.character(rhs) %in% c("BMI_F", "INCOME_F")
+)
+
 # pvalue asterisks
 # Convert GenomicSEM p-values to numeric; it may report tiny values as "< 5e-300".
 plot_data$p_value_num <- suppressWarnings(
@@ -555,6 +569,11 @@ trait_order <- plot_data$rhs[
 ]
 plot_data$rhs <- factor(plot_data$rhs, levels = trait_order)
 
+plot_data <- subset(
+  plot_data,
+  !as.character(rhs) %in% c("BMI_F", "INCOME_F")
+)
+
 # pvalue asterisks
 # Convert GenomicSEM p-values to numeric; it may report tiny values as "< 5e-300".
 plot_data$p_value_num <- suppressWarnings(
@@ -686,6 +705,11 @@ trait_order <- plot_data$rhs[
 ]
 plot_data$rhs <- factor(plot_data$rhs, levels = trait_order)
 
+plot_data <- subset(
+  plot_data,
+  !as.character(rhs) %in% c("BMI_F", "INCOME_F")
+)
+
 # pvalue asterisks
 # Convert GenomicSEM p-values to numeric; it may report tiny values as "< 5e-300".
 plot_data$p_value_num <- suppressWarnings(
@@ -751,10 +775,824 @@ ggsave(
 )
 
 ```
-
 ```{r}
+setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
+
+write.csv(
+  fit_full_adjusted$results,
+  "results/genomic_sem/full_adjusted_results.csv",
+  row.names = FALSE
+)
+
+write.csv(
+  fit_full_adjusted$modelfit,
+  "results/genomic_sem/full_adjusted_modelfit.csv",
+  row.names = FALSE
+)
+```
 
 
+## Mediation Models
+```{r}
+getwd()
+source("genomicsem_2_mediation.R")
 
 ```
 
+```{r}
+mediators <- c("TG", "NEUT", "CRP", "IL6")
+outcomes  <- c("DEP", "PTSD", "ANX", "ADHD", "ASTHMA", "T2D")
+```
+
+```{r}
+
+quiet <- function(expr) { oo <- capture.output(out <- expr); invisible(out) }
+
+med_fits <- list()
+for (m in mediators) {
+  for (o in outcomes) {
+    med_fits[[paste(m, o, sep = "_2_")]] <- quiet(fit_med(m, o))
+  }
+}
+```
+
+```{r show table of mediation fits}
+med_tab <- collect_mediation(med_fits)
+knitr::kable(med_tab, digits = 3)
+```
+
+```{r}
+
+setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
+
+write.csv(med_tab, "results/genomic_sem/mediation_paths.csv", row.names = FALSE)
+```
+
+```{r}
+med_plot_df <- med_tab
+med_plot_df$mediator <- factor(med_plot_df$mediator, levels = c("TG", "NEUT", "CRP", "IL6"))
+med_plot_df$outcome  <- factor(med_plot_df$outcome,
+                               levels = c("DEP", "PTSD", "ANX", "ADHD", "ASTHMA", "T2D"))
+
+p_med <- ggplot(med_plot_df, aes(x = ind_est, y = outcome,
+                                 color = ind_p_FDR_BH < 0.05)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey55") +
+  geom_pointrange(aes(xmin = ind_est - 1.96 * ind_se,
+                      xmax = ind_est + 1.96 * ind_se),
+                  linewidth = 0.4) +
+  facet_wrap(~ mediator, nrow = 1) +
+  scale_color_manual(values = c("grey40", "#0279EE"),
+                     labels = c("FDR > 0.05", "FDR < 0.05"), name = NULL) +
+  labs(x = "Indirect effect (a x b), 95% CI", y = NULL,
+       title = "Genetic associations with Loneliness, mediated by immune biomarkers",
+       subtitle = "Adjusting for income and BMI") +
+  theme_bw(base_size = 11) +
+  theme(text = element_text(family = "Liberation Sans"),
+        legend.position = "top",
+        strip.background = element_rect(fill = "grey92"))
+
+p_med
+```
+
+```{r}
+setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
+ggsave(
+  "results/genomic_sem/p_mediation.png",
+  plot = p_med,
+  width = 10,
+  height = 6,
+  units = "in",
+  dpi = 300,
+  bg = "white"
+)
+
+ggsave(
+  "results/genomic_sem/p_mediation.svg",
+  plot = p_med,
+  width = 10,
+  height = 6,
+  units = "in",
+  bg = "white"
+)
+```
+
+- triglycerides have a significant indirect effect on the association between loneliness and T2D, but the magnitude is very small
+- all other immune biomarkers do not significantly genetically mediate this association. 
+
+
+```{r}
+# attenuation plot
+source("genomicsem_1_interactive.R")
+f_DEP <- quiet(fit_one("LONELY", outcome = "DEP"))
+f_PTSD <- quiet(fit_one("LONELY", outcome = "PTSD"))
+f_ANX <- quiet(fit_one("LONELY", outcome = "ANX"))
+f_ADHD <- quiet(fit_one("LONELY", outcome = "ADHD"))
+f_ASTHMA <- quiet(fit_one("LONELY", outcome = "ASTHMA"))
+f_T2D <- quiet(fit_one("LONELY", outcome = "T2D"))
+
+mk_base <- function(f, outcome) {
+  data.frame(trait = outcome,
+             Unstand_Est = as.numeric(f$path$Unstand_Est),
+             Unstand_SE = as.numeric(f$path$Unstand_SE))
+}
+
+```
+
+```{r}
+# merge individual estimates with mediation
+base6 <- rbind(mk_base(f_DEP, "DEP"), mk_base(f_PTSD, "PTSD"),
+               mk_base(f_ANX, "ANX"), mk_base(f_ADHD, "ADHD"),
+               mk_base(f_ASTHMA, "ASTHMA"), mk_base(f_T2D, "T2D"))
+
+att_df <- merge(base6[, c("trait", "Unstand_Est", "Unstand_SE")],
+                med_tab[, c("mediator", "outcome", "direct_est", "direct_se")],
+                by.x = "trait", by.y = "outcome")
+
+att_long <- rbind(
+  data.frame(mediator = att_df$mediator, outcome = att_df$trait,
+             est = att_df$Unstand_Est, se = att_df$Unstand_SE,
+             model = "No biomarker adjustment"),
+  data.frame(mediator = att_df$mediator, outcome = att_df$trait,
+             est = att_df$direct_est, se = att_df$direct_se,
+             model = "Adjusted for biomarker"))
+
+att_long$outcome <- factor(att_long$outcome,
+                           levels = c("DEP", "PTSD", "ANX", "ADHD", "ASTHMA", "T2D"))
+att_long$mediator <- factor(att_long$mediator, levels = c("TG", "NEUT", "CRP", "IL6"))
+```
+
+```{r}
+p_att <- ggplot(att_long, aes(x = est, y = outcome, color = model)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey55") +
+  geom_pointrange(aes(xmin = est - 1.96 * se, xmax = est + 1.96 * se),
+                  position = position_dodge(width = 0.5), linewidth = 0.4) +
+  facet_wrap(~ mediator, nrow = 1) +
+  scale_color_manual(values = c("red", "black"), name = NULL) +
+  labs(x = "Unstandardized direct effect of loneliness, 95% CI", y = NULL) +
+  theme_bw(base_size = 11) +
+  theme(text = element_text(family = "Liberation Sans"),
+        legend.position = "top")
+
+p_att
+```
+- As we saw in the observational models, we don't see a significant attenuation effect
+- So while an indirect effect of triglycerides exists on Depression and T2D, it does not contribute meaningfully to the main effect
+
+```{r}
+setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
+ggsave(
+  "results/genomic_sem/p_attenuation.png",
+  plot = p_att,
+  width = 10,
+  height = 6,
+  units = "in",
+  dpi = 300,
+  bg = "white"
+)
+
+ggsave(
+  "results/genomic_sem/p_attenuation.svg",
+  plot = p_att,
+  width = 10,
+  height = 6,
+  units = "in",
+  bg = "white"
+)
+```
+
+### Sensitivity (Replication) using AoU Loneliness
+
+```{r}
+
+# setting these to latent factors so GenomicSEM works 
+psych_adjusted_sensitivity <- '
+  ANX_F      =~ 1*ANX
+  DEP_F      =~ 1*DEP
+  PTSD_F     =~ 1*PTSD
+  ADHD_F     =~ 1*ADHD
+  BIP_F      =~ 1*BIP
+  ANOREXIA_F =~ 1*ANOREXIA
+  OCD_F      =~ 1*OCD
+  SCZ_F      =~ 1*SCZ
+  INCOME_F   =~ 1*INCOME
+  BMI_F      =~ 1*BMI
+  LONELY_F   =~ 1*LONELY_AOU
+
+  LONELY_F ~ ANX_F + DEP_F + PTSD_F + ADHD_F + BIP_F +
+             ANOREXIA_F + OCD_F + SCZ_F + INCOME_F + BMI_F
+             
+'
+
+# fit model
+fit_psych_adjusted_sensitivity <- GenomicSEM::usermodel(
+  covstruc,
+  estimation = "DWLS",
+  model = psych_adjusted_sensitivity,
+  std.lv = TRUE
+)
+
+fit_psych_adjusted_sensitivity
+```
+
+```{r}
+library(ggplot2)
+
+# Pull the regression paths predicting loneliness from the fitted model.
+plot_data <- as.data.frame(fit_psych_adjusted_sensitivity$results)
+plot_data <- subset(plot_data, lhs == "LONELY_F" & op == "~")
+
+plot_data$Unstand_Est <- suppressWarnings(
+  as.numeric(as.character(plot_data$Unstand_Est))
+)
+plot_data$Unstand_SE <- suppressWarnings(
+  as.numeric(as.character(plot_data$Unstand_SE))
+)
+
+plot_data <- subset(
+  plot_data,
+  is.finite(Unstand_Est) & is.finite(Unstand_SE)
+)
+
+plot_data$lower <- plot_data$Unstand_Est - 1.96 * plot_data$Unstand_SE
+plot_data$upper <- plot_data$Unstand_Est + 1.96 * plot_data$Unstand_SE
+
+# Calculate approximate 95% confidence intervals.
+plot_data$lower <- plot_data$Unstand_Est -
+  1.96 * plot_data$Unstand_SE
+plot_data$upper <- plot_data$Unstand_Est +
+  1.96 * plot_data$Unstand_SE
+
+# order traits by rg magnitude
+trait_order <- plot_data$rhs[
+  order(plot_data$Unstand_Est)
+]
+plot_data$rhs <- factor(plot_data$rhs, levels = trait_order)
+
+plot_data <- subset(
+  plot_data,
+  !as.character(rhs) %in% c("BMI_F", "INCOME_F")
+)
+
+# pvalue asterisks
+# Convert GenomicSEM p-values to numeric; it may report tiny values as "< 5e-300".
+plot_data$p_value_num <- suppressWarnings(
+  as.numeric(gsub("^<\\s*", "", as.character(plot_data$p_value)))
+)
+
+plot_data$signif <- ifelse(
+  plot_data$p_value_num < 0.001, " ***",
+  ifelse(plot_data$p_value_num < 0.01, " **",
+         ifelse(plot_data$p_value_num < 0.05, " *", ""))
+)
+
+# Make displayed labels, stripping a trailing "_F" and adding stars.
+label_map <- setNames(
+  paste0(sub("_F$", "", as.character(plot_data$rhs)), plot_data$signif),
+  as.character(plot_data$rhs)
+)
+
+p_unstand_immune_sensitivity <- ggplot(plot_data, aes(x = Unstand_Est, y = rhs)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_errorbar(
+    aes(xmin = lower, xmax = upper),
+    width = 0.18,
+    orientation = "y"
+  ) +
+  geom_point(size = 2.8) +
+  labs(
+    x = "Genetic association with loneliness",
+    y = NULL,
+    title = "Genomic SEM: Loneliness (AoU) and Immune Conditions",
+    subtitle = "Adjusting for Income, BMI and Comorbid Conditions"
+  ) + 
+  scale_y_discrete(labels = label_map) + 
+  theme_classic() + theme(
+    panel.grid.major.x = element_line(color = "grey85", linewidth = 0.5),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    axis.line.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
+p_unstand_immune_sensitivity
+```
+```{r}
+biomarker_adjusted_sensitivity <- '
+  LYMPH_F     =~ 1*LYMPH
+  BASO_F      =~ 1*BASO
+  EOS_F       =~ 1*EOS
+  MONO_F      =~ 1*MONO
+  NEUT_F      =~ 1*NEUT
+  WBC_F       =~ 1*WBC
+  PLT_F       =~ 1*PLT
+  ALBUMIN_F   =~ 1*ALBUMIN
+  CRP_F       =~ 1*CRP
+  TG_F        =~ 1*TG
+  IL6_F       =~ 1*IL6
+  TNF_F       =~ 1*TNF
+  INCOME_F    =~ 1*INCOME
+  BMI_F       =~ 1*BMI
+  LONELY_F    =~ 1*LONELY_AOU
+
+  LONELY_F ~ LYMPH_F + BASO_F + EOS_F + MONO_F + NEUT_F + WBC_F 
+            + PLT_F + ALBUMIN_F + CRP_F + TG_F + + IL6_F + TNF_F + INCOME_F + BMI_F
+             
+'
+
+# fit model
+fit_biomarker_adjusted_sensitivity <- GenomicSEM::usermodel(
+  covstruc,
+  estimation = "DWLS",
+  model = biomarker_adjusted_sensitivity,
+  std.lv = TRUE
+)
+
+fit_biomarker_adjusted_sensitivity
+```
+```{r}
+
+# Pull the regression paths predicting loneliness from the fitted model.
+plot_data <- as.data.frame(fit_biomarker_adjusted_sensitivity$results)
+plot_data <- subset(plot_data, lhs == "LONELY_F" & op == "~")
+
+plot_data$Unstand_Est <- suppressWarnings(
+  as.numeric(as.character(plot_data$Unstand_Est))
+)
+plot_data$Unstand_SE <- suppressWarnings(
+  as.numeric(as.character(plot_data$Unstand_SE))
+)
+
+plot_data <- subset(
+  plot_data,
+  is.finite(Unstand_Est) & is.finite(Unstand_SE)
+)
+
+plot_data$lower <- plot_data$Unstand_Est - 1.96 * plot_data$Unstand_SE
+plot_data$upper <- plot_data$Unstand_Est + 1.96 * plot_data$Unstand_SE
+
+# Calculate approximate 95% confidence intervals.
+plot_data$lower <- plot_data$Unstand_Est -
+  1.96 * plot_data$Unstand_SE
+plot_data$upper <- plot_data$Unstand_Est +
+  1.96 * plot_data$Unstand_SE
+
+# order traits by rg magnitude
+trait_order <- plot_data$rhs[
+  order(plot_data$Unstand_Est)
+]
+plot_data$rhs <- factor(plot_data$rhs, levels = trait_order)
+
+plot_data <- subset(
+  plot_data,
+  !as.character(rhs) %in% c("BMI_F", "INCOME_F")
+)
+
+# pvalue asterisks
+# Convert GenomicSEM p-values to numeric; it may report tiny values as "< 5e-300".
+plot_data$p_value_num <- suppressWarnings(
+  as.numeric(gsub("^<\\s*", "", as.character(plot_data$p_value)))
+)
+
+plot_data$signif <- ifelse(
+  plot_data$p_value_num < 0.001, " ***",
+  ifelse(plot_data$p_value_num < 0.01, " **",
+         ifelse(plot_data$p_value_num < 0.05, " *", ""))
+)
+
+# Make displayed labels, stripping a trailing "_F" and adding stars.
+label_map <- setNames(
+  paste0(sub("_F$", "", as.character(plot_data$rhs)), plot_data$signif),
+  as.character(plot_data$rhs)
+)
+
+p_unstand_biomarker_sensitivity <- ggplot(plot_data, aes(x = Unstand_Est, y = rhs)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_errorbar(
+    aes(xmin = lower, xmax = upper),
+    width = 0.18,
+    orientation = "y"
+  ) +
+  geom_point(size = 2.8) +
+  labs(
+    x = "Genetic association with loneliness",
+    y = NULL,
+    title = "Genomic SEM: Loneliness (AoU) and Immune Biomarkers",
+    subtitle = "Adjusting for Income, BMI and Biomarkers"
+  ) + 
+  scale_y_discrete(labels = label_map) + 
+  theme_classic() + theme(
+    panel.grid.major.x = element_line(color = "grey85", linewidth = 0.5),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    axis.line.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
+p_unstand_biomarker_sensitivity
+```
+
+```{r}
+immune_adjusted_sensitivity <- '
+  ALL_RHINITIS_F     =~ 1*ALL_RHINITIS
+  ASTHMA_F      =~ 1*ASTHMA
+  ATOPIC_DERMA_F       =~ 1*ATOPIC_DERMA
+  CROHN_F      =~ 1*CROHN
+  UC_F      =~ 1*UC
+  RA_F       =~ 1*RA
+  T2D_F       =~ 1*T2D
+  INCOME_F    =~ 1*INCOME
+  BMI_F       =~ 1*BMI
+  LONELY_F    =~ 1*LONELY_AOU
+
+  LONELY_F ~ ALL_RHINITIS_F + ASTHMA_F + ATOPIC_DERMA_F + CROHN_F + UC_F + RA_F 
+            + T2D_F + INCOME_F + BMI_F
+             
+'
+
+# fit model
+fit_immune_adjusted_sensitivity <- GenomicSEM::usermodel(
+  covstruc,
+  estimation = "DWLS",
+  model = immune_adjusted_sensitivity,
+  std.lv = TRUE
+)
+
+fit_immune_adjusted
+```
+
+```{r}
+# Pull the regression paths predicting loneliness from the fitted model.
+plot_data <- as.data.frame(fit_immune_adjusted_sensitivity$results)
+plot_data <- subset(plot_data, lhs == "LONELY_F" & op == "~")
+
+plot_data$Unstand_Est <- suppressWarnings(
+  as.numeric(as.character(plot_data$Unstand_Est))
+)
+plot_data$Unstand_SE <- suppressWarnings(
+  as.numeric(as.character(plot_data$Unstand_SE))
+)
+
+plot_data <- subset(
+  plot_data,
+  is.finite(Unstand_Est) & is.finite(Unstand_SE)
+)
+
+plot_data$lower <- plot_data$Unstand_Est - 1.96 * plot_data$Unstand_SE
+plot_data$upper <- plot_data$Unstand_Est + 1.96 * plot_data$Unstand_SE
+
+# Calculate approximate 95% confidence intervals.
+plot_data$lower <- plot_data$Unstand_Est -
+  1.96 * plot_data$Unstand_SE
+plot_data$upper <- plot_data$Unstand_Est +
+  1.96 * plot_data$Unstand_SE
+
+# order traits by rg magnitude
+trait_order <- plot_data$rhs[
+  order(plot_data$Unstand_Est)
+]
+plot_data$rhs <- factor(plot_data$rhs, levels = trait_order)
+
+plot_data <- subset(
+  plot_data,
+  !as.character(rhs) %in% c("BMI_F", "INCOME_F")
+)
+
+# pvalue asterisks
+# Convert GenomicSEM p-values to numeric; it may report tiny values as "< 5e-300".
+plot_data$p_value_num <- suppressWarnings(
+  as.numeric(gsub("^<\\s*", "", as.character(plot_data$p_value)))
+)
+
+plot_data$signif <- ifelse(
+  plot_data$p_value_num < 0.001, " ***",
+  ifelse(plot_data$p_value_num < 0.01, " **",
+         ifelse(plot_data$p_value_num < 0.05, " *", ""))
+)
+
+# Make displayed labels, stripping a trailing "_F" and adding stars.
+label_map <- setNames(
+  paste0(sub("_F$", "", as.character(plot_data$rhs)), plot_data$signif),
+  as.character(plot_data$rhs)
+)
+
+p_unstand_immune_sensitivity <- ggplot(plot_data, aes(x = Unstand_Est, y = rhs)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_errorbar(
+    aes(xmin = lower, xmax = upper),
+    width = 0.18,
+    orientation = "y"
+  ) +
+  geom_point(size = 2.8) +
+  labs(
+    x = "Genetic association with loneliness",
+    y = NULL,
+    title = "Genomic SEM: Loneliness (AoU) and Immune Conditions",
+    subtitle = "Adjusting for Income, BMI and Comorbid Conditions"
+  ) + 
+  scale_y_discrete(labels = label_map) + 
+  theme_classic() + theme(
+    panel.grid.major.x = element_line(color = "grey85", linewidth = 0.5),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    axis.line.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
+p_unstand_immune_sensitivity
+```
+
+- so far all findings have replicated with AoU loneliness GWAS sumstats
+
+```{r}
+full_adjusted_sensitivity <- '
+  ANX_F      =~ 1*ANX
+  DEP_F      =~ 1*DEP
+  PTSD_F     =~ 1*PTSD
+  ADHD_F     =~ 1*ADHD
+  INCOME_F   =~ 1*INCOME
+  BMI_F      =~ 1*BMI
+  LONELY_F   =~ 1*LONELY_AOU
+  NEUT_F      =~ 1*NEUT
+  ALBUMIN_F   =~ 1*ALBUMIN
+  CRP_F       =~ 1*CRP
+  TG_F        =~ 1*TG
+  IL6_F       =~ 1*IL6
+  ASTHMA_F      =~ 1*ASTHMA
+  T2D_F       =~ 1*T2D
+  
+  LONELY_F ~ ANX_F + DEP_F + PTSD_F + ADHD_F
+            + NEUT_F + ALBUMIN_F + CRP_F + TG_F + IL6_F + ASTHMA_F + T2D_F + 
+             + INCOME_F + BMI_F
+             
+'
+
+# fit model
+fit_full_adjusted_sensitivity <- GenomicSEM::usermodel(
+  covstruc,
+  estimation = "DWLS",
+  model = full_adjusted_sensitivity,
+  std.lv = TRUE
+)
+
+fit_full_adjusted_sensitivity
+```
+
+```{r}
+# Pull the regression paths predicting loneliness from the fitted model.
+plot_data <- as.data.frame(fit_full_adjusted_sensitivity$results)
+plot_data <- subset(plot_data, lhs == "LONELY_F" & op == "~")
+
+plot_data$Unstand_Est <- suppressWarnings(
+  as.numeric(as.character(plot_data$Unstand_Est))
+)
+plot_data$Unstand_SE <- suppressWarnings(
+  as.numeric(as.character(plot_data$Unstand_SE))
+)
+
+plot_data <- subset(
+  plot_data,
+  is.finite(Unstand_Est) & is.finite(Unstand_SE)
+)
+
+plot_data$lower <- plot_data$Unstand_Est - 1.96 * plot_data$Unstand_SE
+plot_data$upper <- plot_data$Unstand_Est + 1.96 * plot_data$Unstand_SE
+
+# Calculate approximate 95% confidence intervals.
+plot_data$lower <- plot_data$Unstand_Est -
+  1.96 * plot_data$Unstand_SE
+plot_data$upper <- plot_data$Unstand_Est +
+  1.96 * plot_data$Unstand_SE
+
+# order traits by rg magnitude
+trait_order <- plot_data$rhs[
+  order(plot_data$Unstand_Est)
+]
+plot_data$rhs <- factor(plot_data$rhs, levels = trait_order)
+
+plot_data <- subset(
+  plot_data,
+  !as.character(rhs) %in% c("BMI_F", "INCOME_F")
+)
+
+# pvalue asterisks
+# Convert GenomicSEM p-values to numeric; it may report tiny values as "< 5e-300".
+plot_data$p_value_num <- suppressWarnings(
+  as.numeric(gsub("^<\\s*", "", as.character(plot_data$p_value)))
+)
+
+plot_data$signif <- ifelse(
+  plot_data$p_value_num < 0.001, " ***",
+  ifelse(plot_data$p_value_num < 0.01, " **",
+         ifelse(plot_data$p_value_num < 0.05, " *", ""))
+)
+
+# Make displayed labels, stripping a trailing "_F" and adding stars.
+label_map <- setNames(
+  paste0(sub("_F$", "", as.character(plot_data$rhs)), plot_data$signif),
+  as.character(plot_data$rhs)
+)
+
+p_unstand_full_sensitivity <- ggplot(plot_data, aes(x = Unstand_Est, y = rhs)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_errorbar(
+    aes(xmin = lower, xmax = upper),
+    width = 0.18,
+    orientation = "y"
+  ) +
+  geom_point(size = 2.8) +
+  labs(
+    x = "Genetic association with loneliness",
+    y = NULL,
+    title = "Genomic SEM: Loneliness (AoU) and all traits with multivariate adjustment",
+    subtitle = "Adjusting for Income, BMI, Comorbid Conditions and Biomarkers"
+  ) + 
+  scale_y_discrete(labels = label_map) + 
+  theme_classic() + theme(
+    panel.grid.major.x = element_line(color = "grey85", linewidth = 0.5),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    axis.line.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
+p_unstand_full_sensitivity
+```
+
+#### Replicating Mediation Analyses
+```{r}
+source("genomicsem_2_mediation.R")
+
+med_fits_aou <- list()
+for (m in mediators) {
+  for (o in outcomes) {
+    med_fits_aou[[paste(m, o, sep = "_2_")]] <- quiet(fit_med(m, o, exposure = "LONELY_AOU"))
+  }
+}
+```
+
+```{r}
+med_tab_aou <- collect_mediation(med_fits_aou)
+knitr::kable(med_tab_aou, digits = 3)
+
+setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
+write.csv(med_tab_aou, "results/genomic_sem/mediation_paths_aou.csv", row.names = FALSE)
+```
+
+```{r}
+med_plot_df_aou <- med_tab_aou
+med_plot_df_aou$mediator <- factor(med_plot_df_aou$mediator, levels = c("TG", "NEUT", "CRP", "IL6"))
+med_plot_df_aou$outcome  <- factor(med_plot_df_aou$outcome,
+                               levels = c("DEP", "PTSD", "ANX", "ADHD", "ASTHMA", "T2D"))
+
+p_med_sensitivity <- ggplot(med_plot_df_aou, aes(x = ind_est, y = outcome,
+                                 color = ind_p_FDR_BH < 0.05)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey55") +
+  geom_pointrange(aes(xmin = ind_est - 1.96 * ind_se,
+                      xmax = ind_est + 1.96 * ind_se),
+                  linewidth = 0.4) +
+  facet_wrap(~ mediator, nrow = 1) +
+  scale_color_manual(values = c("grey40", "#0279EE"),
+                     labels = c("FDR > 0.05", "FDR < 0.05"), name = NULL) +
+  labs(x = "Indirect effect (a x b), 95% CI", y = NULL,
+       title = "Genetic associations with Loneliness (AoU), mediated by immune biomarkers",
+       subtitle = "Adjusting for income and BMI") +
+  theme_bw(base_size = 11) +
+  theme(text = element_text(family = "Liberation Sans"),
+        legend.position = "top",
+        strip.background = element_rect(fill = "grey92"))
+
+p_med_sensitivity
+```
+
+- none of the mediations were significant at FDR (though T2D shows a trend for triglycerides and interleukin 6, and ADHD for triglycerides)
+- probably a power-related thing
+
+### Dual-Mediation Model 
+- Linking Depression -> T2D via loneliness and triglycerides
+
+```{r}
+model_dm <- paste(
+  "TG ~ a1*DEP + INCOME + BMI",
+  "LONELY ~ a2*DEP + INCOME + BMI",
+  "T2D ~ b1*TG + b2*LONELY + c*DEP + INCOME + BMI",
+  "TG ~~ LONELY",
+  "ind_TG := a1*b1",
+  "ind_LONELY := a2*b2",
+  "ind_total := a1*b1 + a2*b2",
+  sep = "
+")
+
+um_dm <- quiet(usermodel(covstruc, estimation = "DWLS", model = model_dm))
+
+res_dm <- um_dm$results
+
+knitr::kable(res_dm[res_dm$op == "~", ], digits = 3)
+```
+
+```{r}
+knitr::kable(res_dm[res_dm$op == ":=", c("lhs", "Unstand_Est", "Unstand_SE", "p_value")],
+             digits = 3)
+```
+
+#### Neuroticism, Loneliness and Immune Biomarkers
+
+```{r}
+# setting these to latent factors so GenomicSEM works 
+psych_adjusted_neur <- '
+  ANX_F      =~ 1*ANX
+  DEP_F      =~ 1*DEP
+  PTSD_F     =~ 1*PTSD
+  ADHD_F     =~ 1*ADHD
+  BIP_F      =~ 1*BIP
+  ANOREXIA_F =~ 1*ANOREXIA
+  OCD_F      =~ 1*OCD
+  SCZ_F      =~ 1*SCZ
+  INCOME_F   =~ 1*INCOME
+  BMI_F      =~ 1*BMI
+  NEUROT_F   =~ 1*NEUROT
+  LONELY_F   =~ 1*LONELY
+
+  NEUROT_F ~ ANX_F + DEP_F + PTSD_F + ADHD_F + BIP_F +
+             ANOREXIA_F + OCD_F + SCZ_F + INCOME_F + BMI_F + LONELY_F
+             
+'
+
+# fit model
+fit_psych_adjusted_neur <- GenomicSEM::usermodel(
+  covstruc,
+  estimation = "DWLS",
+  model = psych_adjusted_neur,
+  std.lv = TRUE
+)
+
+fit_psych_adjusted_neur
+```
+
+- neuroticism associated with anxiety, depression, PTSD, income and loneliness
+
+```{r}
+biomarker_adjusted_neur <- '
+  LYMPH_F     =~ 1*LYMPH
+  BASO_F      =~ 1*BASO
+  EOS_F       =~ 1*EOS
+  MONO_F      =~ 1*MONO
+  NEUT_F      =~ 1*NEUT
+  WBC_F       =~ 1*WBC
+  PLT_F       =~ 1*PLT
+  ALBUMIN_F   =~ 1*ALBUMIN
+  CRP_F       =~ 1*CRP
+  TG_F        =~ 1*TG
+  IL6_F       =~ 1*IL6
+  TNF_F       =~ 1*TNF
+  INCOME_F    =~ 1*INCOME
+  BMI_F       =~ 1*BMI
+  LONELY_F    =~ 1*LONELY_AOU
+  NEUROT_F    =~ 1*NEUROT
+
+  NEUROT_F ~ LYMPH_F + BASO_F + EOS_F + MONO_F + NEUT_F + WBC_F 
+            + PLT_F + ALBUMIN_F + CRP_F + TG_F + + IL6_F + TNF_F + INCOME_F + BMI_F + LONELY_F
+             
+'
+
+# fit model
+fit_biomarker_adjusted_neur <- GenomicSEM::usermodel(
+  covstruc,
+  estimation = "DWLS",
+  model = biomarker_adjusted_neur,
+  std.lv = TRUE
+)
+
+fit_biomarker_adjusted_neur
+```
+- neuroticism associated with neutrophils, income and loneliness only 
+
+```{r}
+immune_adjusted_neur <- '
+  ALL_RHINITIS_F     =~ 1*ALL_RHINITIS
+  ASTHMA_F      =~ 1*ASTHMA
+  ATOPIC_DERMA_F       =~ 1*ATOPIC_DERMA
+  CROHN_F      =~ 1*CROHN
+  UC_F      =~ 1*UC
+  RA_F       =~ 1*RA
+  T2D_F       =~ 1*T2D
+  INCOME_F    =~ 1*INCOME
+  BMI_F       =~ 1*BMI
+  LONELY_F    =~ 1*LONELY_AOU
+  NEUROT_F    =~ 1*NEUROT
+
+  NEUROT_F ~ ALL_RHINITIS_F + ASTHMA_F + ATOPIC_DERMA_F + CROHN_F + UC_F + RA_F 
+            + T2D_F + INCOME_F + BMI_F + LONELY_F
+             
+'
+
+# fit model
+fit_immune_adjusted_neur <- GenomicSEM::usermodel(
+  covstruc,
+  estimation = "DWLS",
+  model = immune_adjusted_neur,
+  std.lv = TRUE
+)
+
+fit_immune_adjusted_neur
+```
+- neuroticism associated with asthma, T2D, income and loneliness only 
