@@ -28,7 +28,7 @@ export SLURM_EXPORT_ENV=ALL
 set -euo pipefail
 
 ROOT=/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline
-SCRIPTS="/gpfs/gibbs/project/polimanti/ejm96/immune/scripts/cluster scripts/metal_ldsc_pipeline/munging"
+SCRIPTS="/gpfs/gibbs/project/polimanti/ejm96/immune/scripts/cluster scripts/metal_ldsc_pipeline/ldsr"
 
 export MUNGED_DIR="${MUNGED_DIR:-$ROOT/munged}"
 export LDSC_DIR="${LDSC_DIR:-/gpfs/gibbs/project/polimanti/ejm96/immune/ldsc_py3}"

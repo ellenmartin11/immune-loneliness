@@ -1,0 +1,760 @@
+---
+title: "GenomicSEM Loneliness Immune"
+author: "Ellen Martin"
+date: "2026-11-03"
+output: html_document
+---
+
+## GenomicSEM Loneliness and Immune Conditions
+- 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Import Data and Load GenomicSEM
+```{r read output from cluster}
+library(GenomicSEM)
+
+```
+
+### Sanity Check Matrix
+```{r sanity}
+covstruc <- readRDS("/vast/palmer/scratch/polimanti/ejm96/genomic_sem/LDSCoutput.rds")
+round(covstruc$S, 3)
+covstruc$N
+```
+
+### Checking Correlations and QC of GenomicSEM LDSC
+
+- AoU Loneliness has a strong correlation with PanUKB Loneliness isolation (rg = 0.791)
+```{r AoU and PanUKB Loneliness rg}
+S <- covstruc$S
+rownames(S) <- colnames(S)
+rg <- S["LONELY", "LONELY_AOU"] / sqrt(S["LONELY", "LONELY"] * S["LONELY_AOU", "LONELY_AOU"])
+rg
+```
+
+```{r Loneliness correlations}
+round(cov2cor(S)["LONELY", ], 2)
+diag(cov2cor(S))[c("LONELY", "LONELY_AOU")]
+```
+## Modeling
+
+#### Loneliness ~ Psychiatric Conditions
+- adjusting for BMI, income
+
+```{r adjusted psych model}
+
+# setting these to latent factors so GenomicSEM works 
+psych_adjusted <- '
+  ANX_F      =~ 1*ANX
+  DEP_F      =~ 1*DEP
+  PTSD_F     =~ 1*PTSD
+  ADHD_F     =~ 1*ADHD
+  BIP_F      =~ 1*BIP
+  ANOREXIA_F =~ 1*ANOREXIA
+  OCD_F      =~ 1*OCD
+  SCZ_F      =~ 1*SCZ
+  INCOME_F   =~ 1*INCOME
+  BMI_F      =~ 1*BMI
+  LONELY_F   =~ 1*LONELY
+
+  LONELY_F ~ ANX_F + DEP_F + PTSD_F + ADHD_F + BIP_F +
+             ANOREXIA_F + OCD_F + SCZ_F + INCOME_F + BMI_F
+             
+'
+
+# fit model
+fit_psych_adjusted <- GenomicSEM::usermodel(
+  covstruc,
+  estimation = "DWLS",
+  model = psych_adjusted,
+  std.lv = TRUE
+)
+
+fit_psych_adjusted
+```
+
+```{r forest plot}
+library(ggplot2)
+
+# Pull the regression paths predicting loneliness from the fitted model.
+plot_data <- as.data.frame(fit_psych_adjusted$results)
+plot_data <- subset(plot_data, lhs == "LONELY_F" & op == "~")
+
+plot_data$Unstand_Est <- suppressWarnings(
+  as.numeric(as.character(plot_data$Unstand_Est))
+)
+plot_data$Unstand_SE <- suppressWarnings(
+  as.numeric(as.character(plot_data$Unstand_SE))
+)
+
+plot_data <- subset(
+  plot_data,
+  is.finite(Unstand_Est) & is.finite(Unstand_SE)
+)
+
+plot_data$lower <- plot_data$Unstand_Est - 1.96 * plot_data$Unstand_SE
+plot_data$upper <- plot_data$Unstand_Est + 1.96 * plot_data$Unstand_SE
+
+# Calculate approximate 95% confidence intervals.
+plot_data$lower <- plot_data$Unstand_Est -
+  1.96 * plot_data$Unstand_SE
+plot_data$upper <- plot_data$Unstand_Est +
+  1.96 * plot_data$Unstand_SE
+
+# order traits by rg magnitude
+trait_order <- plot_data$rhs[
+  order(plot_data$Unstand_Est)
+]
+plot_data$rhs <- factor(plot_data$rhs, levels = trait_order)
+
+# pvalue asterisks
+# Convert GenomicSEM p-values to numeric; it may report tiny values as "< 5e-300".
+plot_data$p_value_num <- suppressWarnings(
+  as.numeric(gsub("^<\\s*", "", as.character(plot_data$p_value)))
+)
+
+plot_data$signif <- ifelse(
+  plot_data$p_value_num < 0.001, " ***",
+  ifelse(plot_data$p_value_num < 0.01, " **",
+         ifelse(plot_data$p_value_num < 0.05, " *", ""))
+)
+
+# Make displayed labels, stripping a trailing "_F" and adding stars.
+label_map <- setNames(
+  paste0(sub("_F$", "", as.character(plot_data$rhs)), plot_data$signif),
+  as.character(plot_data$rhs)
+)
+
+p_unstand_psych <- ggplot(plot_data, aes(x = Unstand_Est, y = rhs)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_errorbar(
+    aes(xmin = lower, xmax = upper),
+    width = 0.18,
+    orientation = "y"
+  ) +
+  geom_point(size = 2.8) +
+  labs(
+    x = "Genetic association with loneliness",
+    y = NULL,
+    title = "Genomic SEM: Loneliness (PanUKB) and Psychiatric Disorders",
+    subtitle = "Adjusting for Income, BMI and Psychiatric Comorbidity"
+  ) + 
+  scale_y_discrete(labels = label_map) + 
+  theme_classic() + theme(
+    panel.grid.major.x = element_line(color = "grey85", linewidth = 0.5),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    axis.line.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
+p_unstand_psych
+```
+
+- after adjusting for comorbid psychiatric conditions and income + BMI, depression, PTSD, anxiety, ADHD remain significantly associated with loneliness (genetically)
+
+```{r exporting figures}
+setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
+ggsave(
+  "results/genomic_sem/p_unstand_psych.png",
+  plot = p_unstand_psych,
+  width = 8,
+  height = 6,
+  units = "in",
+  dpi = 300,
+  bg = "white"
+)
+
+ggsave(
+  "results/genomic_sem/p_unstand_psych.svg",
+  plot = p_unstand_psych,
+  width = 8,
+  height = 6,
+  units = "in",
+  bg = "white"
+)
+
+```
+```{r exportin gdata}
+setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
+
+write.csv(
+  fit_psych_adjusted$results,
+  "results/genomic_sem/psych_adjusted_results.csv",
+  row.names = FALSE
+)
+
+write.csv(
+  fit_psych_adjusted$modelfit,
+  "results/genomic_sem/psych_adjusted_modelfit.csv",
+  row.names = FALSE
+)
+```
+
+```{r STD Forest Plot}
+library(ggplot2)
+
+plot_data <- as.data.frame(fit_psych_adjusted$results)
+plot_data <- subset(plot_data, lhs == "LONELY_F" & op == "~")
+
+# Convert estimates to numeric in case they were imported as character.
+plot_data$STD_Genotype <- suppressWarnings(
+  as.numeric(as.character(plot_data$STD_Genotype))
+)
+plot_data$STD_Genotype_SE <- suppressWarnings(
+  as.numeric(as.character(plot_data$STD_Genotype_SE))
+)
+
+# Keep only rows with usable estimates and standard errors.
+plot_data <- subset(
+  plot_data,
+  is.finite(STD_Genotype) & is.finite(STD_Genotype_SE)
+)
+
+# Approximate 95% confidence intervals.
+plot_data$lower <- plot_data$STD_Genotype - 1.96 * plot_data$STD_Genotype_SE
+plot_data$upper <- plot_data$STD_Genotype + 1.96 * plot_data$STD_Genotype_SE
+
+# Order by absolute estimate; largest magnitude appears at the top.
+plot_data$rhs <- as.character(plot_data$rhs)
+trait_order <- plot_data$rhs[order(plot_data$STD_Genotype)]
+plot_data$rhs <- factor(plot_data$rhs, levels = trait_order)
+
+ggplot(plot_data, aes(x = STD_Genotype, y = rhs)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_errorbar(
+    aes(xmin = lower, xmax = upper),
+    orientation = "y",
+    width = 0.18,
+    color = "grey35"
+  ) +
+  geom_point(size = 2.8) +
+  scale_y_discrete(labels = function(x) sub("_F$", "", x)) +
+  labs(
+    x = "Standardized genetic path to loneliness",
+    y = NULL,
+    title = "Conditional genetic associations with loneliness",
+    subtitle = "Points are STD_Genotype estimates; bars are approximate 95% CIs"
+  ) +
+  theme_classic() +
+  theme(
+    panel.grid.major.x = element_line(color = "grey85", linewidth = 0.5),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_blank()
+  )
+```
+### Sensitivity Analyses using just one of the internalizing disorders
+
+```{r psych adjusted dep}
+# setting these to latent factors so GenomicSEM works 
+psych_adjusted_dep <- '
+  DEP_F      =~ 1*DEP
+  ADHD_F     =~ 1*ADHD
+  BIP_F      =~ 1*BIP
+  ANOREXIA_F =~ 1*ANOREXIA
+  OCD_F      =~ 1*OCD
+  SCZ_F      =~ 1*SCZ
+  INCOME_F   =~ 1*INCOME
+  BMI_F      =~ 1*BMI
+  LONELY_F   =~ 1*LONELY
+
+  LONELY_F ~ DEP_F + ADHD_F + BIP_F +
+             ANOREXIA_F + OCD_F + SCZ_F + INCOME_F + BMI_F
+             
+'
+
+# fit model
+fit_psych_adjusted_dep <- GenomicSEM::usermodel(
+  covstruc,
+  estimation = "DWLS",
+  model = psych_adjusted_dep,
+  std.lv = TRUE
+)
+
+fit_psych_adjusted_dep
+```
+```{r}
+library(ggplot2)
+
+plot_data <- as.data.frame(fit_psych_adjusted_dep$results)
+plot_data <- subset(plot_data, lhs == "LONELY_F" & op == "~")
+
+# Convert estimates to numeric in case they were imported as character.
+plot_data$STD_Genotype <- suppressWarnings(
+  as.numeric(as.character(plot_data$STD_Genotype))
+)
+plot_data$STD_Genotype_SE <- suppressWarnings(
+  as.numeric(as.character(plot_data$STD_Genotype_SE))
+)
+
+# Keep only rows with usable estimates and standard errors.
+plot_data <- subset(
+  plot_data,
+  is.finite(STD_Genotype) & is.finite(STD_Genotype_SE)
+)
+
+# Approximate 95% confidence intervals.
+plot_data$lower <- plot_data$STD_Genotype - 1.96 * plot_data$STD_Genotype_SE
+plot_data$upper <- plot_data$STD_Genotype + 1.96 * plot_data$STD_Genotype_SE
+
+# Order by absolute estimate; largest magnitude appears at the top.
+plot_data$rhs <- as.character(plot_data$rhs)
+trait_order <- plot_data$rhs[order(plot_data$STD_Genotype)]
+plot_data$rhs <- factor(plot_data$rhs, levels = trait_order)
+
+ggplot(plot_data, aes(x = STD_Genotype, y = rhs)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_errorbar(
+    aes(xmin = lower, xmax = upper),
+    orientation = "y",
+    width = 0.18,
+    color = "grey35"
+  ) +
+  geom_point(size = 2.8) +
+  scale_y_discrete(labels = function(x) sub("_F$", "", x)) +
+  labs(
+    x = "Standardized genetic path to loneliness",
+    y = NULL,
+    title = "Conditional genetic associations with loneliness",
+    subtitle = "Points are STD_Genotype estimates; bars are approximate 95% CIs"
+  ) +
+  theme_classic() +
+  theme(
+    panel.grid.major.x = element_line(color = "grey85", linewidth = 0.5),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    axis.line.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+```
+- when we exclude highly collinear traits (anx, ptsd) and just use depression, then we see that CI's get more precise, and we see the expected association with depression and loneliness
+- for now, just going to use the unstandardized effect so we can see overall patterns and replicate the observational analsyes
+
+
+#### Loneliness and Immune Biomarkers (Adjusted)
+
+```{r}
+# setting these to latent factors so GenomicSEM works 
+biomarker_adjusted <- '
+  LYMPH_F     =~ 1*LYMPH
+  BASO_F      =~ 1*BASO
+  EOS_F       =~ 1*EOS
+  MONO_F      =~ 1*MONO
+  NEUT_F      =~ 1*NEUT
+  WBC_F       =~ 1*WBC
+  PLT_F       =~ 1*PLT
+  ALBUMIN_F   =~ 1*ALBUMIN
+  CRP_F       =~ 1*CRP
+  TG_F        =~ 1*TG
+  IL6_F       =~ 1*IL6
+  TNF_F       =~ 1*TNF
+  INCOME_F    =~ 1*INCOME
+  BMI_F       =~ 1*BMI
+  LONELY_F    =~ 1*LONELY
+
+  LONELY_F ~ LYMPH_F + BASO_F + EOS_F + MONO_F + NEUT_F + WBC_F 
+            + PLT_F + ALBUMIN_F + CRP_F + TG_F + + IL6_F + TNF_F + INCOME_F + BMI_F
+             
+'
+
+# fit model
+fit_biomarker_adjusted <- GenomicSEM::usermodel(
+  covstruc,
+  estimation = "DWLS",
+  model = biomarker_adjusted,
+  std.lv = TRUE
+)
+
+fit_biomarker_adjusted
+```
+```{r biomarker forest plot}
+library(ggplot2)
+
+# Pull the regression paths predicting loneliness from the fitted model.
+plot_data <- as.data.frame(fit_biomarker_adjusted$results)
+plot_data <- subset(plot_data, lhs == "LONELY_F" & op == "~")
+
+plot_data$Unstand_Est <- suppressWarnings(
+  as.numeric(as.character(plot_data$Unstand_Est))
+)
+plot_data$Unstand_SE <- suppressWarnings(
+  as.numeric(as.character(plot_data$Unstand_SE))
+)
+
+plot_data <- subset(
+  plot_data,
+  is.finite(Unstand_Est) & is.finite(Unstand_SE)
+)
+
+plot_data$lower <- plot_data$Unstand_Est - 1.96 * plot_data$Unstand_SE
+plot_data$upper <- plot_data$Unstand_Est + 1.96 * plot_data$Unstand_SE
+
+# Calculate approximate 95% confidence intervals.
+plot_data$lower <- plot_data$Unstand_Est -
+  1.96 * plot_data$Unstand_SE
+plot_data$upper <- plot_data$Unstand_Est +
+  1.96 * plot_data$Unstand_SE
+
+# order traits by rg magnitude
+trait_order <- plot_data$rhs[
+  order(plot_data$Unstand_Est)
+]
+plot_data$rhs <- factor(plot_data$rhs, levels = trait_order)
+
+# pvalue asterisks
+# Convert GenomicSEM p-values to numeric; it may report tiny values as "< 5e-300".
+plot_data$p_value_num <- suppressWarnings(
+  as.numeric(gsub("^<\\s*", "", as.character(plot_data$p_value)))
+)
+
+plot_data$signif <- ifelse(
+  plot_data$p_value_num < 0.001, " ***",
+  ifelse(plot_data$p_value_num < 0.01, " **",
+         ifelse(plot_data$p_value_num < 0.05, " *", ""))
+)
+
+# Make displayed labels, stripping a trailing "_F" and adding stars.
+label_map <- setNames(
+  paste0(sub("_F$", "", as.character(plot_data$rhs)), plot_data$signif),
+  as.character(plot_data$rhs)
+)
+
+p_unstand_biomarker <- ggplot(plot_data, aes(x = Unstand_Est, y = rhs)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_errorbar(
+    aes(xmin = lower, xmax = upper),
+    width = 0.18,
+    orientation = "y"
+  ) +
+  geom_point(size = 2.8) +
+  labs(
+    x = "Genetic association with loneliness",
+    y = NULL,
+    title = "Genomic SEM: Loneliness (PanUKB) and Immune Biomarkers",
+    subtitle = "Adjusting for Income, BMI and Immune Biomarkers"
+  ) + 
+  scale_y_discrete(labels = label_map) + 
+  theme_classic() + theme(
+    panel.grid.major.x = element_line(color = "grey85", linewidth = 0.5),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    axis.line.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
+p_unstand_biomarker
+```
+- after adjusting for income and BMI (and each other) the strongest associations with loneliness are triglycerides, IL-6, neutrophils and CRP
+
+```{r}
+setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
+ggsave(
+  "results/genomic_sem/p_unstand_biomarkers.png",
+  plot = p_unstand_biomarker,
+  width = 8,
+  height = 6,
+  units = "in",
+  dpi = 300,
+  bg = "white"
+)
+
+ggsave(
+  "results/genomic_sem/p_unstand_biomarkers.svg",
+  plot = p_unstand_biomarker,
+  width = 8,
+  height = 6,
+  units = "in",
+  bg = "white"
+)
+
+
+```
+
+```{r}
+setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
+
+write.csv(
+  fit_biomarker_adjusted$results,
+  "results/genomic_sem/biomarker_adjusted_results.csv",
+  row.names = FALSE
+)
+
+write.csv(
+  fit_biomarker_adjusted$modelfit,
+  "results/genomic_sem/biomarker_adjusted_modelfit.csv",
+  row.names = FALSE
+)
+```
+
+
+#### Loneliness and Immune Conditions
+
+```{r}
+# setting these to latent factors so GenomicSEM works 
+immune_adjusted <- '
+  ALL_RHINITIS_F     =~ 1*ALL_RHINITIS
+  ASTHMA_F      =~ 1*ASTHMA
+  ATOPIC_DERMA_F       =~ 1*ATOPIC_DERMA
+  CROHN_F      =~ 1*CROHN
+  UC_F      =~ 1*UC
+  RA_F       =~ 1*RA
+  T2D_F       =~ 1*T2D
+  INCOME_F    =~ 1*INCOME
+  BMI_F       =~ 1*BMI
+  LONELY_F    =~ 1*LONELY
+
+  LONELY_F ~ ALL_RHINITIS_F + ASTHMA_F + ATOPIC_DERMA_F + CROHN_F + UC_F + RA_F 
+            + T2D_F + INCOME_F + BMI_F
+             
+'
+
+# fit model
+fit_immune_adjusted <- GenomicSEM::usermodel(
+  covstruc,
+  estimation = "DWLS",
+  model = immune_adjusted,
+  std.lv = TRUE
+)
+
+fit_immune_adjusted
+```
+```{r}
+library(ggplot2)
+
+# Pull the regression paths predicting loneliness from the fitted model.
+plot_data <- as.data.frame(fit_immune_adjusted$results)
+plot_data <- subset(plot_data, lhs == "LONELY_F" & op == "~")
+
+plot_data$Unstand_Est <- suppressWarnings(
+  as.numeric(as.character(plot_data$Unstand_Est))
+)
+plot_data$Unstand_SE <- suppressWarnings(
+  as.numeric(as.character(plot_data$Unstand_SE))
+)
+
+plot_data <- subset(
+  plot_data,
+  is.finite(Unstand_Est) & is.finite(Unstand_SE)
+)
+
+plot_data$lower <- plot_data$Unstand_Est - 1.96 * plot_data$Unstand_SE
+plot_data$upper <- plot_data$Unstand_Est + 1.96 * plot_data$Unstand_SE
+
+# Calculate approximate 95% confidence intervals.
+plot_data$lower <- plot_data$Unstand_Est -
+  1.96 * plot_data$Unstand_SE
+plot_data$upper <- plot_data$Unstand_Est +
+  1.96 * plot_data$Unstand_SE
+
+# order traits by rg magnitude
+trait_order <- plot_data$rhs[
+  order(plot_data$Unstand_Est)
+]
+plot_data$rhs <- factor(plot_data$rhs, levels = trait_order)
+
+# pvalue asterisks
+# Convert GenomicSEM p-values to numeric; it may report tiny values as "< 5e-300".
+plot_data$p_value_num <- suppressWarnings(
+  as.numeric(gsub("^<\\s*", "", as.character(plot_data$p_value)))
+)
+
+plot_data$signif <- ifelse(
+  plot_data$p_value_num < 0.001, " ***",
+  ifelse(plot_data$p_value_num < 0.01, " **",
+         ifelse(plot_data$p_value_num < 0.05, " *", ""))
+)
+
+# Make displayed labels, stripping a trailing "_F" and adding stars.
+label_map <- setNames(
+  paste0(sub("_F$", "", as.character(plot_data$rhs)), plot_data$signif),
+  as.character(plot_data$rhs)
+)
+
+p_unstand_immune <- ggplot(plot_data, aes(x = Unstand_Est, y = rhs)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_errorbar(
+    aes(xmin = lower, xmax = upper),
+    width = 0.18,
+    orientation = "y"
+  ) +
+  geom_point(size = 2.8) +
+  labs(
+    x = "Genetic association with loneliness",
+    y = NULL,
+    title = "Genomic SEM: Loneliness (PanUKB) and Immune Conditions",
+    subtitle = "Adjusting for Income, BMI and Comorbid Conditions"
+  ) + 
+  scale_y_discrete(labels = label_map) + 
+  theme_classic() + theme(
+    panel.grid.major.x = element_line(color = "grey85", linewidth = 0.5),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    axis.line.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
+p_unstand_immune
+```
+
+```{r}
+setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
+
+write.csv(
+  fit_immune_adjusted$results,
+  "results/genomic_sem/immune_adjusted_results.csv",
+  row.names = FALSE
+)
+
+write.csv(
+  fit_immune_adjusted$modelfit,
+  "results/genomic_sem/immune_adjusted_modelfit.csv",
+  row.names = FALSE
+)
+```
+
+#### Fully adjusted model
+
+```{r}
+full_adjusted <- '
+  ANX_F      =~ 1*ANX
+  DEP_F      =~ 1*DEP
+  PTSD_F     =~ 1*PTSD
+  ADHD_F     =~ 1*ADHD
+  INCOME_F   =~ 1*INCOME
+  BMI_F      =~ 1*BMI
+  LONELY_F   =~ 1*LONELY
+  NEUT_F      =~ 1*NEUT
+  ALBUMIN_F   =~ 1*ALBUMIN
+  CRP_F       =~ 1*CRP
+  TG_F        =~ 1*TG
+  IL6_F       =~ 1*IL6
+  ASTHMA_F      =~ 1*ASTHMA
+  T2D_F       =~ 1*T2D
+  
+  LONELY_F ~ ANX_F + DEP_F + PTSD_F + ADHD_F
+            + NEUT_F + ALBUMIN_F + CRP_F + TG_F + IL6_F + ASTHMA_F + T2D_F + 
+             + INCOME_F + BMI_F
+             
+'
+
+# fit model
+fit_full_adjusted <- GenomicSEM::usermodel(
+  covstruc,
+  estimation = "DWLS",
+  model = full_adjusted,
+  std.lv = TRUE
+)
+
+fit_full_adjusted
+
+
+```
+```{r}
+library(ggplot2)
+
+# Pull the regression paths predicting loneliness from the fitted model.
+plot_data <- as.data.frame(fit_full_adjusted$results)
+plot_data <- subset(plot_data, lhs == "LONELY_F" & op == "~")
+
+plot_data$Unstand_Est <- suppressWarnings(
+  as.numeric(as.character(plot_data$Unstand_Est))
+)
+plot_data$Unstand_SE <- suppressWarnings(
+  as.numeric(as.character(plot_data$Unstand_SE))
+)
+
+plot_data <- subset(
+  plot_data,
+  is.finite(Unstand_Est) & is.finite(Unstand_SE)
+)
+
+plot_data$lower <- plot_data$Unstand_Est - 1.96 * plot_data$Unstand_SE
+plot_data$upper <- plot_data$Unstand_Est + 1.96 * plot_data$Unstand_SE
+
+# Calculate approximate 95% confidence intervals.
+plot_data$lower <- plot_data$Unstand_Est -
+  1.96 * plot_data$Unstand_SE
+plot_data$upper <- plot_data$Unstand_Est +
+  1.96 * plot_data$Unstand_SE
+
+# order traits by rg magnitude
+trait_order <- plot_data$rhs[
+  order(plot_data$Unstand_Est)
+]
+plot_data$rhs <- factor(plot_data$rhs, levels = trait_order)
+
+# pvalue asterisks
+# Convert GenomicSEM p-values to numeric; it may report tiny values as "< 5e-300".
+plot_data$p_value_num <- suppressWarnings(
+  as.numeric(gsub("^<\\s*", "", as.character(plot_data$p_value)))
+)
+
+plot_data$signif <- ifelse(
+  plot_data$p_value_num < 0.001, " ***",
+  ifelse(plot_data$p_value_num < 0.01, " **",
+         ifelse(plot_data$p_value_num < 0.05, " *", ""))
+)
+
+# Make displayed labels, stripping a trailing "_F" and adding stars.
+label_map <- setNames(
+  paste0(sub("_F$", "", as.character(plot_data$rhs)), plot_data$signif),
+  as.character(plot_data$rhs)
+)
+
+p_unstand_joint <- ggplot(plot_data, aes(x = Unstand_Est, y = rhs)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_errorbar(
+    aes(xmin = lower, xmax = upper),
+    width = 0.18,
+    orientation = "y"
+  ) +
+  geom_point(size = 2.8) +
+  labs(
+    x = "Genetic association with loneliness",
+    y = NULL,
+    title = "Genomic SEM: Loneliness (PanUKB) and Traits",
+    subtitle = "Adjusting for Income, BMI, Immune Biomarkers, and Comorbidity"
+  ) + 
+  scale_y_discrete(labels = label_map) + 
+  theme_classic() + theme(
+    panel.grid.major.x = element_line(color = "grey85", linewidth = 0.5),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    axis.line.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
+p_unstand_joint
+```
+```{r}
+setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
+ggsave(
+  "results/genomic_sem/p_unstand_joint.png",
+  plot = p_unstand_joint,
+  width = 8,
+  height = 6,
+  units = "in",
+  dpi = 300,
+  bg = "white"
+)
+
+ggsave(
+  "results/genomic_sem/p_unstand_joint.svg",
+  plot = p_unstand_joint,
+  width = 8,
+  height = 6,
+  units = "in",
+  bg = "white"
+)
+
+```
+
+```{r}
+
+
+
+```
+

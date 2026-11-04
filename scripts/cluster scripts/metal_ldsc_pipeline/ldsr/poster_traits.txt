@@ -17,7 +17,6 @@ Rheumatoid Arthritis FinnGen
 Income
 Ulcerative colitis FinnGen
 Basophil Count PanUKB
-Hypothyroidism
 Schizophrenia PGC
 Loneliness isolation PanUKB
 Type 2 Diabetes
@@ -29,3 +28,7 @@ Monocytes
 Neutrophils
 Platelet Count
 Triglycerides
+Interleukin 6 Inflammation Meta
+Glycoprotein acetylation
+TNF Multi
+Tyrosine

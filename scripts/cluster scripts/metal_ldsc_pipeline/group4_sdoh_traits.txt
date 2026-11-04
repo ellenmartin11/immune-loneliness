@@ -1,0 +1,8 @@
+Loneliness isolation PanUKB
+Income
+Educational Attainment
+BMI GIANT
+Drinks Per Week GSCAN
+Neuroticism GPC
+Sleep Duration PanUKB
+Cigarettes per Day GSCAN

@@ -1,0 +1,37 @@
+short_name	trait	path	trait_type
+LONELY	Loneliness isolation PanUKB	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Loneliness_isolation_PanUKB.sumstats.gz	case_control
+LONELY_AOU	UCLA loneliness scale AoU EUR	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/UCLA_loneliness_scale_eur.sumstats.gz	quantitative
+ANX	Anxiety Disorder PGC	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Anxiety_Disorder_PGC.sumstats.gz	case_control
+DEP	Depression PGC	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Depression_PGC.sumstats.gz	case_control
+PTSD	PTSD	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/PTSD.sumstats.gz	case_control
+ADHD	ADHD PGC	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/ADHD_PGC.sumstats.gz	case_control
+BIP	Bipolar PGC	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Bipolar_PGC.sumstats.gz	case_control
+ANOREXIA	Anorexia Nervosa PGC	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Anorexia_Nervosa_PGC.sumstats.gz	case_control
+OCD	OCD	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/OCD.sumstats.gz	case_control
+SCZ	Schizophrenia PGC	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Schizophrenia_PGC.sumstats.gz	case_control
+INCOME	Income	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Income.sumstats.gz	quantitative
+BMI	BMI GIANT	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/BMI_GIANT.sumstats.gz	quantitative
+ALL_RHINITIS	Allergic rhinitis FinnGen	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Allergic_rhinitis_FinnGen.sumstats.gz	case_control
+ASTHMA	Asthma Multi	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Asthma_Multi.sumstats.gz	case_control
+ATOPIC_DERMA	Atopic dermatitis	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Atopic_dermatitis.sumstats.gz	case_control
+CROHN	Crohn disease	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Crohn_disease.sumstats.gz	case_control
+UC	Ulcerative colitis FinnGen	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Ulcerative_colitis_FinnGen.sumstats.gz	case_control
+RA	Rheumatoid Arthritis FinnGen	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Rheumatoid_Arthritis_FinnGen.sumstats.gz	case_control
+T2D	Type 2 Diabetes	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Type_2_Diabetes.sumstats.gz	quantitative
+EA	Educational Attainment	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Educational_Attainment.sumstats.gz	quantitative
+LYMPH	Lymphocyte Count	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Lymphocyte_Count.sumstats.gz	quantitative
+BASO	Basophil Count PanUKB	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Basophil_Count_PanUKB.sumstats.gz	quantitative
+EOS	Eosinophil Count	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Eosinophil_Count.sumstats.gz	quantitative
+MONO	Monocytes	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Monocytes.sumstats.gz	quantitative
+NEUT	Neutrophils	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Neutrophils.sumstats.gz	quantitative
+WBC	White blood cell count Mixed	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/White_blood_cell_count_Mixed.sumstats.gz	quantitative
+PLT	Platelet Count	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Platelet_Count.sumstats.gz	quantitative
+ALBUMIN	Albumin	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Albumin.sumstats.gz	quantitative
+CRP	C-reactive protein	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/C-reactive_protein.sumstats.gz	quantitative
+TG	Triglycerides	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Triglycerides.sumstats.gz	quantitative
+IL6	Interleukin 6 Inflammation Meta	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Interleukin_6_Inflammation_Meta.sumstats.gz	quantitative
+TNF	TNF Multi	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/TNF_Multi.sumstats.gz	quantitative
+DRINKS	Drinks Per Week GSCAN	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Drinks_Per_Week_GSCAN.sumstats.gz	quantitative
+NEUROT	Neuroticism GPC	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Neuroticism_GPC.sumstats.gz	quantitative
+SLEEP	Sleep Duration PanUKB	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Sleep_Duration_PanUKB.sumstats.gz	quantitative
+CPD	Cigarettes per Day GSCAN	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Cigarettes_per_Day_GSCAN.sumstats.gz	quantitative
