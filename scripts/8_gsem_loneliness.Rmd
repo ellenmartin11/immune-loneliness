@@ -47,6 +47,7 @@ diag(cov2cor(S))[c("LONELY", "LONELY_AOU")]
 
 #### Loneliness ~ Psychiatric Conditions
 - adjusting for BMI, income
+- excluding BIP because it did not remain sig rg with loneliness in LDSC heatmap
 
 ```{r adjusted psych model}
 
@@ -56,7 +57,6 @@ psych_adjusted <- '
   DEP_F      =~ 1*DEP
   PTSD_F     =~ 1*PTSD
   ADHD_F     =~ 1*ADHD
-  BIP_F      =~ 1*BIP
   ANOREXIA_F =~ 1*ANOREXIA
   OCD_F      =~ 1*OCD
   SCZ_F      =~ 1*SCZ
@@ -64,7 +64,7 @@ psych_adjusted <- '
   BMI_F      =~ 1*BMI
   LONELY_F   =~ 1*LONELY
 
-  LONELY_F ~ ANX_F + DEP_F + PTSD_F + ADHD_F + BIP_F +
+  LONELY_F ~ ANX_F + DEP_F + PTSD_F + ADHD_F +
              ANOREXIA_F + OCD_F + SCZ_F + INCOME_F + BMI_F
              
 '
@@ -262,7 +262,6 @@ ggplot(plot_data, aes(x = STD_Genotype, y = rhs)) +
 psych_adjusted_dep <- '
   DEP_F      =~ 1*DEP
   ADHD_F     =~ 1*ADHD
-  BIP_F      =~ 1*BIP
   ANOREXIA_F =~ 1*ANOREXIA
   OCD_F      =~ 1*OCD
   SCZ_F      =~ 1*SCZ
@@ -270,7 +269,7 @@ psych_adjusted_dep <- '
   BMI_F      =~ 1*BMI
   LONELY_F   =~ 1*LONELY
 
-  LONELY_F ~ DEP_F + ADHD_F + BIP_F +
+  LONELY_F ~ DEP_F + ADHD_F +
              ANOREXIA_F + OCD_F + SCZ_F + INCOME_F + BMI_F
              
 '
@@ -345,27 +344,25 @@ ggplot(plot_data, aes(x = STD_Genotype, y = rhs)) +
 
 #### Loneliness and Immune Biomarkers (Adjusted)
 
+- excluding WBC, Basophil, TNF
 ```{r}
 # setting these to latent factors so GenomicSEM works 
 biomarker_adjusted <- '
   LYMPH_F     =~ 1*LYMPH
-  BASO_F      =~ 1*BASO
   EOS_F       =~ 1*EOS
   MONO_F      =~ 1*MONO
   NEUT_F      =~ 1*NEUT
-  WBC_F       =~ 1*WBC
   PLT_F       =~ 1*PLT
   ALBUMIN_F   =~ 1*ALBUMIN
   CRP_F       =~ 1*CRP
   TG_F        =~ 1*TG
   IL6_F       =~ 1*IL6
-  TNF_F       =~ 1*TNF
   INCOME_F    =~ 1*INCOME
   BMI_F       =~ 1*BMI
   LONELY_F    =~ 1*LONELY
 
-  LONELY_F ~ LYMPH_F + BASO_F + EOS_F + MONO_F + NEUT_F + WBC_F 
-            + PLT_F + ALBUMIN_F + CRP_F + TG_F + + IL6_F + TNF_F + INCOME_F + BMI_F
+  LONELY_F ~ LYMPH_F + EOS_F + MONO_F + NEUT_F 
+            + PLT_F + ALBUMIN_F + CRP_F + TG_F + + IL6_F + INCOME_F + BMI_F
              
 '
 
@@ -463,7 +460,7 @@ p_unstand_biomarker
 ```
 - after adjusting for income and BMI (and each other) the strongest associations with loneliness are triglycerides, IL-6, neutrophils and CRP
 
-```{r}
+```{r saving biomarker figs}
 setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
 ggsave(
   "results/genomic_sem/p_unstand_biomarkers.png",
@@ -487,7 +484,7 @@ ggsave(
 
 ```
 
-```{r}
+```{r exporting biomarker data}
 setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
 
 write.csv(
@@ -505,22 +502,20 @@ write.csv(
 
 
 #### Loneliness and Immune Conditions
-
+- excluding UC and Crohn's
 ```{r}
 # setting these to latent factors so GenomicSEM works 
 immune_adjusted <- '
   ALL_RHINITIS_F     =~ 1*ALL_RHINITIS
   ASTHMA_F      =~ 1*ASTHMA
   ATOPIC_DERMA_F       =~ 1*ATOPIC_DERMA
-  CROHN_F      =~ 1*CROHN
-  UC_F      =~ 1*UC
   RA_F       =~ 1*RA
   T2D_F       =~ 1*T2D
   INCOME_F    =~ 1*INCOME
   BMI_F       =~ 1*BMI
   LONELY_F    =~ 1*LONELY
 
-  LONELY_F ~ ALL_RHINITIS_F + ASTHMA_F + ATOPIC_DERMA_F + CROHN_F + UC_F + RA_F 
+  LONELY_F ~ ALL_RHINITIS_F + ASTHMA_F + ATOPIC_DERMA_F + RA_F 
             + T2D_F + INCOME_F + BMI_F
              
 '
@@ -618,7 +613,31 @@ p_unstand_immune <- ggplot(plot_data, aes(x = Unstand_Est, y = rhs)) +
 p_unstand_immune
 ```
 
-```{r}
+```{r saving immune cond figs}
+setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
+ggsave(
+  "results/genomic_sem/p_unstand_immune.png",
+  plot = p_unstand_immune,
+  width = 8,
+  height = 6,
+  units = "in",
+  dpi = 300,
+  bg = "white"
+)
+
+ggsave(
+  "results/genomic_sem/p_unstand_immune.svg",
+  plot = p_unstand_immune,
+  width = 8,
+  height = 6,
+  units = "in",
+  bg = "white"
+)
+
+
+```
+
+```{r saving immune data}
 setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
 
 write.csv(
@@ -636,7 +655,9 @@ write.csv(
 
 #### Fully adjusted model
 
-```{r}
+- excluding anything that doesn't remain in the previous models 
+
+```{r full joint model}
 full_adjusted <- '
   ANX_F      =~ 1*ANX
   DEP_F      =~ 1*DEP
@@ -671,7 +692,7 @@ fit_full_adjusted
 
 
 ```
-```{r}
+```{r plotting full joint}
 library(ggplot2)
 
 # Pull the regression paths predicting loneliness from the fitted model.
@@ -753,7 +774,10 @@ p_unstand_joint <- ggplot(plot_data, aes(x = Unstand_Est, y = rhs)) +
 
 p_unstand_joint
 ```
-```{r}
+
+- everything still associated with loneliness except for IL-6
+
+```{r saving joint fig}
 setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
 ggsave(
   "results/genomic_sem/p_unstand_joint.png",
@@ -775,7 +799,9 @@ ggsave(
 )
 
 ```
-```{r}
+
+
+```{r saving joint data}
 setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
 
 write.csv(
@@ -793,20 +819,20 @@ write.csv(
 
 
 ## Mediation Models
-```{r}
+```{r loading mediation function}
 getwd()
 source("genomicsem_2_mediation.R")
+source("genomicsem_1_interactive.R")
 
 ```
 
-```{r}
-mediators <- c("TG", "NEUT", "CRP", "IL6")
+```{r specify mediators and outcomes}
+mediators <- c("TG", "NEUT", "CRP", "ALBUMIN")
 outcomes  <- c("DEP", "PTSD", "ANX", "ADHD", "ASTHMA", "T2D")
 ```
 
-```{r}
-
-quiet <- function(expr) { oo <- capture.output(out <- expr); invisible(out) }
+```{r looping through mediators and outcomes}
+library(GenomicSEM)
 
 med_fits <- list()
 for (m in mediators) {
@@ -821,40 +847,58 @@ med_tab <- collect_mediation(med_fits)
 knitr::kable(med_tab, digits = 3)
 ```
 
-```{r}
+
+```{r saving mediation estimates}
 
 setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
 
 write.csv(med_tab, "results/genomic_sem/mediation_paths.csv", row.names = FALSE)
 ```
 
-```{r}
+```{r plotting indirect effects}
 med_plot_df <- med_tab
-med_plot_df$mediator <- factor(med_plot_df$mediator, levels = c("TG", "NEUT", "CRP", "IL6"))
+med_plot_df$mediator <- factor(med_plot_df$mediator, levels = c("TG", "NEUT", "CRP", "ALBUMIN"))
 med_plot_df$outcome  <- factor(med_plot_df$outcome,
                                levels = c("DEP", "PTSD", "ANX", "ADHD", "ASTHMA", "T2D"))
 
-p_med <- ggplot(med_plot_df, aes(x = ind_est, y = outcome,
-                                 color = ind_p_FDR_BH < 0.05)) +
+p_med <- ggplot(
+  med_plot_df,
+  aes(x = ind_est, y = outcome)
+) +
   geom_vline(xintercept = 0, linetype = "dashed", color = "grey55") +
-  geom_pointrange(aes(xmin = ind_est - 1.96 * ind_se,
-                      xmax = ind_est + 1.96 * ind_se),
-                  linewidth = 0.4) +
+  geom_pointrange(
+    aes(
+      xmin = ind_est - 1.96 * ind_se,
+      xmax = ind_est + 1.96 * ind_se,
+      shape = ind_p_FDR_BH < 0.05
+    ),
+    orientation = "y",
+    linewidth = 0.4,
+    color = "grey40"
+  ) +
   facet_wrap(~ mediator, nrow = 1) +
-  scale_color_manual(values = c("grey40", "#0279EE"),
-                     labels = c("FDR > 0.05", "FDR < 0.05"), name = NULL) +
-  labs(x = "Indirect effect (a x b), 95% CI", y = NULL,
-       title = "Genetic associations with Loneliness, mediated by immune biomarkers",
-       subtitle = "Adjusting for income and BMI") +
+  scale_shape_manual(
+    values = c(`FALSE` = 1, `TRUE` = 16),
+    labels = c(`FALSE` = "FDR ≥ 0.05", `TRUE` = "FDR < 0.05"),
+    name = NULL
+  ) +
+  labs(
+    x = "Indirect effect (a x b), 95% CI",
+    y = NULL,
+    title = "Genetic associations with Loneliness, mediated by immune biomarkers",
+    subtitle = "Adjusting for income and BMI"
+  ) +
   theme_bw(base_size = 11) +
-  theme(text = element_text(family = "Liberation Sans"),
-        legend.position = "top",
-        strip.background = element_rect(fill = "grey92"))
+  theme(
+    text = element_text(family = "Liberation Sans"),
+    legend.position = "top",
+    strip.background = element_rect(fill = "grey92")
+  )
 
 p_med
 ```
 
-```{r}
+```{r saving mdiation figure}
 setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
 ggsave(
   "results/genomic_sem/p_mediation.png",
@@ -880,7 +924,7 @@ ggsave(
 - all other immune biomarkers do not significantly genetically mediate this association. 
 
 
-```{r}
+```{r attenuation plot}
 # attenuation plot
 source("genomicsem_1_interactive.R")
 f_DEP <- quiet(fit_one("LONELY", outcome = "DEP"))
@@ -918,7 +962,7 @@ att_long <- rbind(
 
 att_long$outcome <- factor(att_long$outcome,
                            levels = c("DEP", "PTSD", "ANX", "ADHD", "ASTHMA", "T2D"))
-att_long$mediator <- factor(att_long$mediator, levels = c("TG", "NEUT", "CRP", "IL6"))
+att_long$mediator <- factor(att_long$mediator, levels = c("TG", "NEUT", "CRP", "ALBUMIN"))
 ```
 
 ```{r}
@@ -970,7 +1014,6 @@ psych_adjusted_sensitivity <- '
   DEP_F      =~ 1*DEP
   PTSD_F     =~ 1*PTSD
   ADHD_F     =~ 1*ADHD
-  BIP_F      =~ 1*BIP
   ANOREXIA_F =~ 1*ANOREXIA
   OCD_F      =~ 1*OCD
   SCZ_F      =~ 1*SCZ
@@ -978,7 +1021,7 @@ psych_adjusted_sensitivity <- '
   BMI_F      =~ 1*BMI
   LONELY_F   =~ 1*LONELY_AOU
 
-  LONELY_F ~ ANX_F + DEP_F + PTSD_F + ADHD_F + BIP_F +
+  LONELY_F ~ ANX_F + DEP_F + PTSD_F + ADHD_F  +
              ANOREXIA_F + OCD_F + SCZ_F + INCOME_F + BMI_F
              
 '
@@ -1079,23 +1122,20 @@ p_unstand_immune_sensitivity
 ```{r}
 biomarker_adjusted_sensitivity <- '
   LYMPH_F     =~ 1*LYMPH
-  BASO_F      =~ 1*BASO
   EOS_F       =~ 1*EOS
   MONO_F      =~ 1*MONO
   NEUT_F      =~ 1*NEUT
-  WBC_F       =~ 1*WBC
   PLT_F       =~ 1*PLT
   ALBUMIN_F   =~ 1*ALBUMIN
   CRP_F       =~ 1*CRP
   TG_F        =~ 1*TG
   IL6_F       =~ 1*IL6
-  TNF_F       =~ 1*TNF
   INCOME_F    =~ 1*INCOME
   BMI_F       =~ 1*BMI
   LONELY_F    =~ 1*LONELY_AOU
 
-  LONELY_F ~ LYMPH_F + BASO_F + EOS_F + MONO_F + NEUT_F + WBC_F 
-            + PLT_F + ALBUMIN_F + CRP_F + TG_F + + IL6_F + TNF_F + INCOME_F + BMI_F
+  LONELY_F ~ LYMPH_F + EOS_F + MONO_F + NEUT_F 
+            + PLT_F + ALBUMIN_F + CRP_F + TG_F + IL6_F  + INCOME_F + BMI_F
              
 '
 
@@ -1196,15 +1236,13 @@ immune_adjusted_sensitivity <- '
   ALL_RHINITIS_F     =~ 1*ALL_RHINITIS
   ASTHMA_F      =~ 1*ASTHMA
   ATOPIC_DERMA_F       =~ 1*ATOPIC_DERMA
-  CROHN_F      =~ 1*CROHN
-  UC_F      =~ 1*UC
   RA_F       =~ 1*RA
   T2D_F       =~ 1*T2D
   INCOME_F    =~ 1*INCOME
   BMI_F       =~ 1*BMI
   LONELY_F    =~ 1*LONELY_AOU
 
-  LONELY_F ~ ALL_RHINITIS_F + ASTHMA_F + ATOPIC_DERMA_F + CROHN_F + UC_F + RA_F 
+  LONELY_F ~ ALL_RHINITIS_F + ASTHMA_F + ATOPIC_DERMA_F  + RA_F 
             + T2D_F + INCOME_F + BMI_F
              
 '
