@@ -17,13 +17,13 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 #### Import Data and Load GenomicSEM
-```{r read output from cluster}
+```{r read output from cluster, echo=FALSE}
 library(GenomicSEM)
 
 ```
 
 #### Sanity Check Matrix
-```{r sanity}
+```{r sanity, echo=FALSE}
 covstruc <- readRDS("/vast/palmer/scratch/polimanti/ejm96/genomic_sem/LDSCoutput.rds")
 round(covstruc$S, 3)
 covstruc$N
@@ -32,14 +32,14 @@ covstruc$N
 #### Checking Correlations and QC of GenomicSEM LDSC
 
 - AoU Loneliness has a strong correlation with PanUKB Loneliness isolation (rg = 0.791)
-```{r AoU and PanUKB Loneliness rg}
+```{r AoU and PanUKB Loneliness rg, echo=FALSE}
 S <- covstruc$S
 rownames(S) <- colnames(S)
 rg <- S["LONELY", "LONELY_AOU"] / sqrt(S["LONELY", "LONELY"] * S["LONELY_AOU", "LONELY_AOU"])
 rg
 ```
 
-```{r Loneliness correlations}
+```{r Loneliness correlations, echo=FALSE}
 round(cov2cor(S)["LONELY", ], 2)
 diag(cov2cor(S))[c("LONELY", "LONELY_AOU")]
 ```
@@ -80,7 +80,7 @@ fit_psych_adjusted <- GenomicSEM::usermodel(
 fit_psych_adjusted
 ```
 - loneliness has widespread associations with anxiety, depression, ptsd, adhd, income and bmi
-```{r forest plot}
+```{r forest plot, echo=FALSE}
 library(ggplot2)
 
 # Pull the regression paths predicting loneliness from the fitted model.
@@ -165,7 +165,7 @@ p_unstand_psych
 
 - after adjusting for comorbid psychiatric conditions and income + BMI, depression, PTSD, anxiety, ADHD remain significantly associated with loneliness (genetically)
 
-```{r exporting figures}
+```{r exporting figures, echo=FALSE}
 setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
 ggsave(
   "results/genomic_sem/p_unstand_psych.png",
@@ -187,7 +187,7 @@ ggsave(
 )
 
 ```
-```{r exportin gdata}
+```{r exportin gdata, echo=FALSE}
 setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
 
 write.csv(
@@ -203,7 +203,7 @@ write.csv(
 )
 ```
 
-```{r STD Forest Plot}
+```{r STD Forest Plot, echo=FALSE}
 library(ggplot2)
 
 plot_data <- as.data.frame(fit_psych_adjusted$results)
@@ -284,7 +284,7 @@ fit_psych_adjusted_dep <- GenomicSEM::usermodel(
 
 fit_psych_adjusted_dep
 ```
-```{r}
+```{r plotting, echo=FALSE}
 library(ggplot2)
 
 plot_data <- as.data.frame(fit_psych_adjusted_dep$results)
@@ -345,7 +345,7 @@ ggplot(plot_data, aes(x = STD_Genotype, y = rhs)) +
 #### Loneliness and Immune Biomarkers (Adjusted)
 
 - excluding WBC, Basophil, TNF
-```{r}
+```{r loneliness immune biomarkers}
 # setting these to latent factors so GenomicSEM works 
 biomarker_adjusted <- '
   LYMPH_F     =~ 1*LYMPH
@@ -376,7 +376,7 @@ fit_biomarker_adjusted <- GenomicSEM::usermodel(
 
 fit_biomarker_adjusted
 ```
-```{r biomarker forest plot}
+```{r biomarker forest plot, echo=FALSE}
 library(ggplot2)
 
 # Pull the regression paths predicting loneliness from the fitted model.
@@ -460,7 +460,7 @@ p_unstand_biomarker
 ```
 - after adjusting for income and BMI (and each other) the strongest associations with loneliness are triglycerides, IL-6, neutrophils and CRP
 
-```{r saving biomarker figs}
+```{r saving biomarker figs, echo=FALSE}
 setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
 ggsave(
   "results/genomic_sem/p_unstand_biomarkers.png",
@@ -484,7 +484,7 @@ ggsave(
 
 ```
 
-```{r exporting biomarker data}
+```{r exporting biomarker data, echo=FALSE}
 setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
 
 write.csv(
@@ -503,7 +503,7 @@ write.csv(
 
 #### Loneliness and Immune Conditions
 - excluding UC and Crohn's
-```{r}
+```{r loneliness immune conditions}
 # setting these to latent factors so GenomicSEM works 
 immune_adjusted <- '
   ALL_RHINITIS_F     =~ 1*ALL_RHINITIS
@@ -530,7 +530,7 @@ fit_immune_adjusted <- GenomicSEM::usermodel(
 
 fit_immune_adjusted
 ```
-```{r}
+```{r plot immune conditions, echo=FALSE}
 library(ggplot2)
 
 # Pull the regression paths predicting loneliness from the fitted model.
@@ -613,7 +613,7 @@ p_unstand_immune <- ggplot(plot_data, aes(x = Unstand_Est, y = rhs)) +
 p_unstand_immune
 ```
 
-```{r saving immune cond figs}
+```{r saving immune cond figs, echo=FALSE}
 setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
 ggsave(
   "results/genomic_sem/p_unstand_immune.png",
@@ -637,7 +637,7 @@ ggsave(
 
 ```
 
-```{r saving immune data}
+```{r saving immune data, echo=FALSE}
 setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
 
 write.csv(
@@ -692,7 +692,7 @@ fit_full_adjusted
 
 
 ```
-```{r plotting full joint}
+```{r plotting full joint, echo=FALSE}
 library(ggplot2)
 
 # Pull the regression paths predicting loneliness from the fitted model.
@@ -777,7 +777,7 @@ p_unstand_joint
 
 - everything still associated with loneliness except for IL-6
 
-```{r saving joint fig}
+```{r saving joint fig, echo=FALSE}
 setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
 ggsave(
   "results/genomic_sem/p_unstand_joint.png",
@@ -801,7 +801,7 @@ ggsave(
 ```
 
 
-```{r saving joint data}
+```{r saving joint data, echo=FALSE}
 setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
 
 write.csv(
@@ -819,7 +819,7 @@ write.csv(
 
 
 ## Mediation Models
-```{r loading mediation function}
+```{r loading mediation function, echo=FALSE}
 getwd()
 source("genomicsem_2_mediation.R")
 source("genomicsem_1_interactive.R")
@@ -848,7 +848,7 @@ knitr::kable(med_tab, digits = 3)
 ```
 
 
-```{r saving mediation estimates}
+```{r saving mediation estimates, echo=FALSE}
 
 setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
 
@@ -898,7 +898,7 @@ p_med <- ggplot(
 p_med
 ```
 
-```{r saving mdiation figure}
+```{r saving mdiation figure, echo=FALSE}
 setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
 ggsave(
   "results/genomic_sem/p_mediation.png",
@@ -942,7 +942,7 @@ mk_base <- function(f, outcome) {
 
 ```
 
-```{r}
+```{r merging mediation results, echo=FALSE}
 # merge individual estimates with mediation
 base6 <- rbind(mk_base(f_DEP, "DEP"), mk_base(f_PTSD, "PTSD"),
                mk_base(f_ANX, "ANX"), mk_base(f_ADHD, "ADHD"),
@@ -965,7 +965,7 @@ att_long$outcome <- factor(att_long$outcome,
 att_long$mediator <- factor(att_long$mediator, levels = c("TG", "NEUT", "CRP", "ALBUMIN"))
 ```
 
-```{r}
+```{r plotting attenuation, echo=FALSE}
 p_att <- ggplot(att_long, aes(x = est, y = outcome, color = model)) +
   geom_vline(xintercept = 0, linetype = "dashed", color = "grey55") +
   geom_pointrange(aes(xmin = est - 1.96 * se, xmax = est + 1.96 * se),
@@ -982,7 +982,7 @@ p_att
 - As we saw in the observational models, we don't see a significant attenuation effect
 - So while an indirect effect of triglycerides exists on Depression and T2D, it does not contribute meaningfully to the main effect
 
-```{r}
+```{r saving attentuation, echo=FALSE}
 setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
 ggsave(
   "results/genomic_sem/p_attenuation.png",
@@ -1006,7 +1006,7 @@ ggsave(
 
 ### Sensitivity (Replication) using AoU Loneliness
 
-```{r}
+```{r replication using AoU}
 
 # setting these to latent factors so GenomicSEM works 
 psych_adjusted_sensitivity <- '
@@ -1037,7 +1037,7 @@ fit_psych_adjusted_sensitivity <- GenomicSEM::usermodel(
 fit_psych_adjusted_sensitivity
 ```
 
-```{r}
+```{r plotting AoU psych, echo=FALSE}
 library(ggplot2)
 
 # Pull the regression paths predicting loneliness from the fitted model.
@@ -1119,7 +1119,7 @@ p_unstand_immune_sensitivity <- ggplot(plot_data, aes(x = Unstand_Est, y = rhs))
 
 p_unstand_immune_sensitivity
 ```
-```{r}
+```{r biomarker AoU}
 biomarker_adjusted_sensitivity <- '
   LYMPH_F     =~ 1*LYMPH
   EOS_F       =~ 1*EOS
@@ -1149,7 +1149,7 @@ fit_biomarker_adjusted_sensitivity <- GenomicSEM::usermodel(
 
 fit_biomarker_adjusted_sensitivity
 ```
-```{r}
+```{r plotting biomarker AoU, echo=FALSE}
 
 # Pull the regression paths predicting loneliness from the fitted model.
 plot_data <- as.data.frame(fit_biomarker_adjusted_sensitivity$results)
@@ -1231,7 +1231,7 @@ p_unstand_biomarker_sensitivity <- ggplot(plot_data, aes(x = Unstand_Est, y = rh
 p_unstand_biomarker_sensitivity
 ```
 
-```{r}
+```{r imune AoU}
 immune_adjusted_sensitivity <- '
   ALL_RHINITIS_F     =~ 1*ALL_RHINITIS
   ASTHMA_F      =~ 1*ASTHMA
@@ -1258,7 +1258,7 @@ fit_immune_adjusted_sensitivity <- GenomicSEM::usermodel(
 fit_immune_adjusted
 ```
 
-```{r}
+```{r plottting immune Aou, echo=FALSE}
 # Pull the regression paths predicting loneliness from the fitted model.
 plot_data <- as.data.frame(fit_immune_adjusted_sensitivity$results)
 plot_data <- subset(plot_data, lhs == "LONELY_F" & op == "~")
@@ -1341,7 +1341,7 @@ p_unstand_immune_sensitivity
 
 - so far all findings have replicated with AoU loneliness GWAS sumstats
 
-```{r}
+```{r full joint AoU}
 full_adjusted_sensitivity <- '
   ANX_F      =~ 1*ANX
   DEP_F      =~ 1*DEP
@@ -1375,7 +1375,7 @@ fit_full_adjusted_sensitivity <- GenomicSEM::usermodel(
 fit_full_adjusted_sensitivity
 ```
 
-```{r}
+```{r plotting full AoU, echo=FALSE}
 # Pull the regression paths predicting loneliness from the fitted model.
 plot_data <- as.data.frame(fit_full_adjusted_sensitivity$results)
 plot_data <- subset(plot_data, lhs == "LONELY_F" & op == "~")
@@ -1457,7 +1457,7 @@ p_unstand_full_sensitivity
 ```
 
 #### Replicating Mediation Analyses
-```{r}
+```{r replicate mediation with AoU, echo=FALSE}
 source("genomicsem_2_mediation.R")
 
 med_fits_aou <- list()
@@ -1468,7 +1468,7 @@ for (m in mediators) {
 }
 ```
 
-```{r}
+```{r saving AoU mediation, echo=FALSE}
 med_tab_aou <- collect_mediation(med_fits_aou)
 knitr::kable(med_tab_aou, digits = 3)
 
@@ -1476,7 +1476,7 @@ setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
 write.csv(med_tab_aou, "results/genomic_sem/mediation_paths_aou.csv", row.names = FALSE)
 ```
 
-```{r}
+```{r plot mediation AoU, echo=FALSE}
 med_plot_df_aou <- med_tab_aou
 med_plot_df_aou$mediator <- factor(med_plot_df_aou$mediator, levels = c("TG", "NEUT", "CRP", "IL6"))
 med_plot_df_aou$outcome  <- factor(med_plot_df_aou$outcome,
@@ -1508,7 +1508,7 @@ p_med_sensitivity
 ### Dual-Mediation Model 
 - Linking Depression -> T2D via loneliness and triglycerides
 
-```{r}
+```{r Dual Mediation}
 model_dm <- paste(
   "TG ~ a1*DEP + INCOME + BMI",
   "LONELY ~ a2*DEP + INCOME + BMI",
@@ -1527,14 +1527,14 @@ res_dm <- um_dm$results
 knitr::kable(res_dm[res_dm$op == "~", ], digits = 3)
 ```
 
-```{r}
+```{r print indirect effect, echo=FALSE}
 knitr::kable(res_dm[res_dm$op == ":=", c("lhs", "Unstand_Est", "Unstand_SE", "p_value")],
              digits = 3)
 ```
 
 #### Neuroticism, Loneliness and Immune Biomarkers
 
-```{r}
+```{r Neuroticism}
 # setting these to latent factors so GenomicSEM works 
 psych_adjusted_neur <- '
   ANX_F      =~ 1*ANX
@@ -1568,7 +1568,7 @@ fit_psych_adjusted_neur
 
 - neuroticism associated with anxiety, depression, PTSD, income and loneliness
 
-```{r}
+```{r adjut neuroticism}
 biomarker_adjusted_neur <- '
   LYMPH_F     =~ 1*LYMPH
   BASO_F      =~ 1*BASO
@@ -1604,7 +1604,7 @@ fit_biomarker_adjusted_neur
 ```
 - neuroticism associated with neutrophils, income and loneliness only 
 
-```{r}
+```{r immune conditions neuroticism}
 immune_adjusted_neur <- '
   ALL_RHINITIS_F     =~ 1*ALL_RHINITIS
   ASTHMA_F      =~ 1*ASTHMA
@@ -1634,3 +1634,5 @@ fit_immune_adjusted_neur <- GenomicSEM::usermodel(
 fit_immune_adjusted_neur
 ```
 - neuroticism associated with asthma, T2D, income and loneliness only 
+
+

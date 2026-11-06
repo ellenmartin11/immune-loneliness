@@ -1,0 +1,468 @@
+---
+title: "9_mr_loneliness_depression_triglycerides"
+author: "Ellen Martin"
+date: "2026-11-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = TRUE, warning = TRUE)
+```
+
+## Mendelian randomization for Loneliness -> Triglycerides, Loneliness -> Depression and Triglycerides -> Depression
+
+Primary analyses: PanUKB loneliness → triglycerides → depression. AoU loneliness is a sensitivity exposure. The pairwise analyses below estimate each link; they do not, by themselves, estimate a formal indirect/mediation effect.
+
+### Setup and paths
+
+```{r paths}
+library(data.table)
+library(TwoSampleMR)
+library(ieugwasr)
+library(MRlap)
+
+PATH_AOU_LONELY <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/UCLA_loneliness_scale_eur.tsv"
+PATH_PAN_LONELY <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/005_Loneliness_isolation_PanUKB_clean.tsv.gz"
+PATH_TG <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/metal_ivw/Triglycerides_METAL_combined.tsv.gz"
+PATH_DEPRESSION <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/012_Depression_PGC_clean.tsv.gz"
+PATH_T2D <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/006_Type_2_Diabetes_clean.tsv.gz"
+
+PLINK_BIN <- "/vast/palmer/apps/avx2/software/PLINK/1.9b_6.21-x86_64/plink"
+LD_BFILE <- "/gpfs/gibbs/pi/polimanti/LDSC_1000G/g1000_eur"
+LD_DIR <- "/gpfs/gibbs/pi/polimanti/LDSC_files/eur_w_ld_chr/"
+HM3_FILE <- "/gpfs/gibbs/pi/polimanti/LDSC_files/eur_w_ld_chr/w_hm3.snplist"
+OUT_DIR <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/mrlap_results"
+dir.create(OUT_DIR, recursive = TRUE, showWarnings = FALSE)
+
+input_paths <- c(
+  AoU_loneliness = PATH_AOU_LONELY,
+  PanUKB_loneliness = PATH_PAN_LONELY,
+  Triglycerides = PATH_TG,
+  Depression = PATH_DEPRESSION,
+  T2D = PATH_T2D
+)
+path_check <- data.table(dataset = names(input_paths), path = unname(input_paths),
+                         exists = file.exists(input_paths))
+print(path_check)
+if (any(!path_check$exists)) stop("One or more input sumstats files are missing.")
+if (!file.exists(PLINK_BIN)) stop("PLINK executable not found: ", PLINK_BIN)
+if (!all(file.exists(paste0(LD_BFILE, c(".bed", ".bim", ".fam")))))
+  stop("PLINK reference panel is missing one or more .bed/.bim/.fam files.")
+if (!dir.exists(LD_DIR) || !file.exists(HM3_FILE))
+  stop("LDSC LD-score directory or HapMap3 SNP list not found.")
+```
+
+### Read and standardize summary statistics
+
+The AoU file uses `CHROM`, `GENPOS`, `ID`, `ALLELE0`, `ALLELE1`, `N`, `TEST`, `BETA`, `SE`, and `LOG10P`. The additive (`ADD`) rows are retained; `ALLELE1` is treated as the effect allele for `BETA`, and `ALLELE0` as the other allele. Confirm that allele convention against the AoU export documentation before interpreting direction.
+
+Other files are expected to have the standardized columns `SNP`, `A1`, `A2`, `BETA`, `SE`, `P`, and `N` (with optional `CHR`, `BP`, `EAF`).
+
+```{r readers}
+read_aou <- function(path) {
+  x <- fread(path)
+  required <- c("CHROM", "GENPOS", "ID", "ALLELE0", "ALLELE1", "N",
+                "TEST", "BETA", "SE", "LOG10P")
+  missing <- setdiff(required, names(x))
+  if (length(missing)) stop("AoU file is missing columns: ", paste(missing, collapse = ", "))
+
+  if (!"ADD" %in% x$TEST) stop("No TEST == 'ADD' records found in AoU file.")
+  x <- x[TEST == "ADD", .(
+    SNP = as.character(ID),
+    CHR = as.character(CHROM),
+    BP = suppressWarnings(as.numeric(GENPOS)),
+    A1 = toupper(as.character(ALLELE1)),
+    A2 = toupper(as.character(ALLELE0)),
+    BETA = suppressWarnings(as.numeric(BETA)),
+    SE = suppressWarnings(as.numeric(SE)),
+    # Keep extremely small p-values positive instead of underflowing to zero.
+    P = pmax(10^(-suppressWarnings(as.numeric(LOG10P))), .Machine$double.xmin),
+    N = suppressWarnings(as.numeric(N))
+  )]
+  validate_sumstats(x, "AoU loneliness")
+}
+
+validate_sumstats <- function(x, label) {
+  req <- c("SNP", "A1", "A2", "BETA", "SE", "P", "N")
+  missing <- setdiff(req, names(x))
+  if (length(missing)) stop(label, " missing standardized fields: ", paste(missing, collapse = ", "))
+  x[, `:=`(
+    SNP = as.character(SNP), A1 = toupper(as.character(A1)),
+    A2 = toupper(as.character(A2)), BETA = as.numeric(BETA),
+    SE = as.numeric(SE), P = as.numeric(P), N = as.numeric(N)
+  )]
+  x <- x[!is.na(SNP) & nzchar(SNP) &
+           A1 %chin% c("A", "C", "G", "T") & A2 %chin% c("A", "C", "G", "T") &
+           is.finite(BETA) & is.finite(SE) & SE > 0 &
+           is.finite(P) & P > 0 & P <= 1 & is.finite(N) & N > 0]
+  dup <- x[, .N, by = SNP][N > 1, SNP]
+  if (length(dup)) {
+    message(label, ": removing all records for ", length(dup), " duplicated SNP IDs")
+    x <- x[!SNP %chin% dup]
+  }
+  if (!nrow(x)) stop("No usable variants remain for ", label)
+  x
+}
+
+read_standard <- function(path, label) {
+  x <- fread(path)
+  # Accept either P or -log10(P), then standardize the common analysis fields.
+  if (!"P" %in% names(x) && "LOG10P" %in% names(x)) x[, P := 10^(-as.numeric(LOG10P))]
+  if (!"P" %in% names(x) && "NEG_LOG10_P" %in% names(x)) x[, P := 10^(-as.numeric(NEG_LOG10_P))]
+  validate_sumstats(x, label)
+}
+
+read_trait <- function(path, label, is_aou = FALSE) {
+  if (is_aou) read_aou(path) else read_standard(path, label)
+}
+
+traits <- list(
+  aou_lonely = read_trait(PATH_AOU_LONELY, "AoU loneliness", TRUE),
+  pan_lonely = read_trait(PATH_PAN_LONELY, "PanUKB loneliness"),
+  tg = read_trait(PATH_TG, "Triglycerides"),
+  depression = read_trait(PATH_DEPRESSION, "Depression"),
+  t2d = read_trait(PATH_T2D, "Type 2 Diabetes")
+)
+vapply(traits, nrow, integer(1))
+```
+
+### TwoSampleMR
+
+```{r twosamplemr}
+to_tsmr <- function(x, type, trait_name) {
+  if (!nrow(x)) stop("No variants to format for ", trait_name, " (", type, ").")
+  d <- as.data.frame(x)
+  d$trait_name <- trait_name
+  TwoSampleMR::format_data(
+    d, type = type, snp_col = "SNP", beta_col = "BETA", se_col = "SE",
+    effect_allele_col = "A1", other_allele_col = "A2",
+    pval_col = "P", phenotype_col = "trait_name"
+  )
+}
+
+clump_exposure <- function(x) {
+  iv <- x[P < 5e-6]
+  message("5e-6 significant variants before clumping: ", nrow(iv))
+  if (!nrow(iv)) {
+    stop("No variants pass P < 5e-6. Check the exposure P-values and their scale.")
+  }
+
+  # Prefer matching by SNP ID; coordinate/allele matching handles AoU IDs
+  # such as chr3:158505502:A:G when the reference uses rsIDs.
+  bim <- fread(paste0(LD_BFILE, ".bim"), header = FALSE,
+               col.names = c("ref_chr", "ref_snp", "cm", "ref_bp", "ref_a1", "ref_a2"))
+  bim[, `:=`(
+    ref_chr = sub("^chr", "", as.character(ref_chr), ignore.case = TRUE),
+    ref_bp = as.numeric(ref_bp),
+    ref_a1 = toupper(as.character(ref_a1)),
+    ref_a2 = toupper(as.character(ref_a2))
+  )]
+
+  overlap <- iv[SNP %chin% bim$ref_snp]
+  if (nrow(overlap)) {
+    overlap[, clump_id := SNP]
+    message("Significant variants matching reference-panel IDs: ", nrow(overlap))
+  } else {
+    if (!all(c("CHR", "BP") %in% names(iv))) {
+      stop("No SNP-ID overlap with the PLINK panel, and the GWAS has no CHR/BP columns for coordinate matching.")
+    }
+    query <- copy(iv)
+    query[, `:=`(
+      q_chr = sub("^chr", "", as.character(CHR), ignore.case = TRUE),
+      q_bp = as.numeric(BP),
+      q_a1 = toupper(as.character(A1)),
+      q_a2 = toupper(as.character(A2))
+    )]
+    query[, `:=`(q_lo = pmin(q_a1, q_a2), q_hi = pmax(q_a1, q_a2))]
+    bim[, `:=`(r_lo = pmin(ref_a1, ref_a2), r_hi = pmax(ref_a1, ref_a2))]
+    matched <- merge(
+      query, bim,
+      by.x = c("q_chr", "q_bp", "q_lo", "q_hi"),
+      by.y = c("ref_chr", "ref_bp", "r_lo", "r_hi"),
+      all = FALSE, allow.cartesian = FALSE
+    )
+    # Keep only unambiguous one-to-one coordinate/allele matches.
+    matched <- matched[, if (.N == 1L) .SD, by = SNP]
+    matched[, clump_id := ref_snp]
+    overlap <- matched
+    message("Significant variants matched by chromosome, position, and allele pair: ", nrow(overlap))
+    if (!nrow(overlap)) {
+      stop("No coordinate/allele matches to the PLINK panel. Check that GWAS and reference use the same genome build and allele representation.")
+    }
+  }
+
+  cl <- ieugwasr::ld_clump_local(
+    dat = data.frame(rsid = overlap$clump_id, pval = overlap$P),
+    clump_kb = 10000, clump_r2 = 0.001, clump_p = 5e-8,
+    bfile = LD_BFILE, plink_bin = PLINK_BIN
+  )
+  if (is.null(cl) || !nrow(cl)) {
+    stop("PLINK returned no clumped instruments although reference-matched significant SNPs were supplied.")
+  }
+  kept <- overlap[clump_id %chin% cl$rsid]
+  message("Independent instruments after clumping: ", nrow(kept))
+  if (!nrow(kept)) stop("No instruments remained after local LD clumping.")
+  # Carry the reference-panel ID forward so it can match rsID-based outcomes.
+  kept[, SNP := clump_id]
+  kept
+}
+
+run_tsmr_pair <- function(exposure, outcome, exposure_name, outcome_name) {
+  exp_iv <- clump_exposure(exposure)
+  exp_dat <- to_tsmr(exp_iv, "exposure", exposure_name)
+
+  # First match IDs directly. If they differ, match variants by coordinates
+  # and the unordered allele pair (requires the same genome build).
+  outcome_rows <- outcome[SNP %chin% exp_iv$SNP]
+  if (!nrow(outcome_rows) && all(c("CHR", "BP") %in% names(exp_iv)) &&
+      all(c("CHR", "BP") %in% names(outcome))) {
+    e <- copy(exp_iv)
+    o <- copy(outcome)
+    e[, `:=`(match_chr = sub("^chr", "", as.character(CHR), ignore.case = TRUE),
+             match_bp = as.numeric(BP),
+             allele_lo = pmin(A1, A2), allele_hi = pmax(A1, A2))]
+    o[, `:=`(match_chr = sub("^chr", "", as.character(CHR), ignore.case = TRUE),
+             match_bp = as.numeric(BP),
+             allele_lo = pmin(A1, A2), allele_hi = pmax(A1, A2))]
+    outcome_rows <- merge(
+      o, unique(e[, .(match_chr, match_bp, allele_lo, allele_hi, SNP)]),
+      by = c("match_chr", "match_bp", "allele_lo", "allele_hi"),
+      all = FALSE, allow.cartesian = FALSE, suffixes = c("", "_exposure")
+    )
+    if (nrow(outcome_rows)) {
+      outcome_rows[, SNP := SNP_exposure]
+      outcome_rows[, SNP_exposure := NULL]
+    }
+  }
+  if (!nrow(outcome_rows)) {
+    warning("Skipping ", exposure_name, " -> ", outcome_name,
+            ": none of the retained exposure instruments is present in the outcome by SNP ID or exact chromosome/position/alleles.")
+    return(list(
+      status = "skipped: no instrument overlap",
+      harmonised = data.table(),
+      mr = data.table(),
+      heterogeneity = NULL,
+      pleiotropy = NULL
+    ))
+  }
+
+  out_dat <- to_tsmr(outcome_rows, "outcome", outcome_name)
+  harm <- TwoSampleMR::harmonise_data(exp_dat, out_dat, action = 3)
+  harm <- subset(harm, mr_keep)
+  if (!nrow(harm)) stop("No harmonized instruments for ", exposure_name, " -> ", outcome_name)
+  methods <- if (nrow(harm) == 1L) {
+    "mr_wald_ratio"
+  } else {
+    c("mr_ivw", "mr_weighted_median", "mr_egger_regression")
+  }
+  list(
+    status = "completed",
+    harmonised = harm,
+    mr = TwoSampleMR::mr(harm, method_list = methods),
+    heterogeneity = if (nrow(harm) >= 2) TwoSampleMR::mr_heterogeneity(harm) else NULL,
+    pleiotropy = if (nrow(harm) >= 3) TwoSampleMR::mr_pleiotropy_test(harm) else NULL
+  )
+}
+
+tsmr_aou_tg <- run_tsmr_pair(traits$aou_lonely, traits$tg, "AoU loneliness", "Triglycerides")
+tsmr_aou_dep <- run_tsmr_pair(traits$aou_lonely, traits$depression, "AoU loneliness", "Depression")
+tsmr_pan_tg <- run_tsmr_pair(traits$pan_lonely, traits$tg, "PanUKB loneliness", "Triglycerides")
+tsmr_pan_dep <- run_tsmr_pair(traits$pan_lonely, traits$depression, "PanUKB loneliness", "Depression")
+tsmr_tg_dep <- run_tsmr_pair(traits$tg, traits$depression, "Triglycerides", "Depression")
+tsmr_aou_t2d <-  run_tsmr_pair(traits$aou_lonely, traits$t2d, "AoU loneliness", "Type 2 Diabetes")
+tsmr_pan_t2d <-  run_tsmr_pair(traits$pan_lonely, traits$t2d, "PanUKB loneliness", "Type 2 Diabetes")
+tsmr_tg_t2d <-  run_tsmr_pair(traits$tg, traits$t2d, "Triglycerides", "Type 2 Diabetes")
+
+
+tsmr_results <- rbindlist(list(
+  tsmr_aou_tg$mr, tsmr_aou_dep$mr, tsmr_pan_tg$mr,
+  tsmr_pan_dep$mr, tsmr_tg_dep$mr, tsmr_aou_t2d$mr, 
+  tsmr_pan_t2d$mr, tsmr_tg_t2d$mr
+), fill = TRUE)
+fwrite(tsmr_results, file.path(OUT_DIR, "twosamplemr_results.csv"))
+tsmr_status <- data.table(
+  analysis = c("AoU loneliness -> Triglycerides", 
+               "AoU loneliness -> Depression",
+               "PanUKB loneliness -> Triglycerides", 
+               "PanUKB loneliness -> Depression",
+               "Triglycerides -> Depression",
+               "Aou loneliness -> Type 2 Diabetes",
+               "PanUKB loneliness -> Type 2 Diabetes",
+               "Triglycerides -> Type 2 Diabetes"),
+  status = vapply(list(tsmr_aou_tg, tsmr_aou_dep, tsmr_pan_tg,
+                       tsmr_pan_dep, tsmr_tg_dep, tsmr_aou_t2d, 
+                       tsmr_pan_t2d, tsmr_tg_t2d ), `[[`, character(1), "status")
+)
+fwrite(tsmr_status, file.path(OUT_DIR, "twosamplemr_status.csv"))
+
+```
+
+#### Summary
+- with relaxed threshold (5e-6), IVW and MW estimates with 8 SNPs find loneliness (PanUKB) -> depression (beta_IVW = 0.226, p = 0.03)
+- loneliness (PanUKB) -> T2D WM with 10 SNPs estimate only significant (beta_WM = 0.143, p = 0.006)
+- Triglycerides -> T2D all significant (beta_IVW = 0.342, p < 0.0001)
+
+- **so overall, there is no evidence of causal associations between loneliness and triglycerides, and there is weak evidence of causal associations of loneliness -> T2D, and strong evidence of triglycerides -> T2D**
+
+
+#### Bidirectional MR
+- we tested loneliness -> triglycerides, loneliness -> depression/T2D and triglycerides -> depression/T2D
+- now we can test 
+a) depression -> triglycerides, depression -> loneliness, triglycerides -> loneliness
+b) T2D -> triglycerides, T2D -> loneliness
+
+```{r}
+tsmr_tg_aou <- run_tsmr_pair(traits$tg, traits$aou_lonely, "Triglycerides", "AoU loneliness")
+tsmr_dep_aou <- run_tsmr_pair(traits$depression, traits$aou_lonely, "Depression", "AoU loneliness")
+tsmr_tg_pan <- run_tsmr_pair(traits$tg, traits$pan_lonely, "Triglycerides", "PanUKB loneliness")
+tsmr_dep_pan <- run_tsmr_pair(traits$depression, traits$pan_lonely, "Depression", "PanUKB loneliness")
+tsmr_dep_tg <- run_tsmr_pair(traits$depression, traits$tg, "Depression", "Triglycerides")
+tsmr_t2d_aou <-  run_tsmr_pair(traits$t2d, traits$aou_lonely, "Type 2 Diabetes", "AoU loneliness")
+tsmr_t2d_pan <-  run_tsmr_pair(traits$t2d, traits$pan_lonely, "Type 2 Diabetes", "PanUKB loneliness")
+tsmr_t2d_tg <-  run_tsmr_pair(traits$t2d, traits$tg, "Type 2 Diabetes", "Triglycerides")
+
+
+tsmr_results_reverse <- rbindlist(list(
+  tsmr_tg_aou$mr, tsmr_dep_aou$mr, tsmr_tg_pan$mr,
+  tsmr_dep_pan$mr, tsmr_dep_tg$mr, tsmr_t2d_aou$mr, 
+  tsmr_t2d_pan$mr, tsmr_t2d_tg$mr
+), fill = TRUE)
+fwrite(tsmr_results_reverse, file.path(OUT_DIR, "twosamplemr_results_reverse.csv"))
+tsmr_status_reverse <- data.table(
+  analysis = c("Triglycerides -> loneliness", 
+               "Depression -> AoU loneliness",
+               "Triglycerides -> PanUKB loneliness", 
+               "Depression -> PanUKB loneliness",
+               "Depression -> Triglycerides",
+               "Type 2 Diabetes -> Aou loneliness",
+               "Type 2 Diabetes -> PanUKB loneliness",
+               "Type 2 Diabetes -> Triglycerides"),
+  status = vapply(list(tsmr_tg_aou, tsmr_dep_aou, tsmr_tg_pan,
+                       tsmr_dep_pan, tsmr_dep_tg, tsmr_t2d_aou, 
+                       tsmr_t2d_pan, tsmr_t2d_tg ), `[[`, character(1), "status")
+)
+fwrite(tsmr_status_reverse, file.path(OUT_DIR, "twosamplemr_status_reverse.csv"))
+```
+#### Reversed MR Effects
+- evidence of Triglycerides -> PanUKB loneliness, consistent across IVW and WM (beta IVW = 0.078, p < 0.001, nSNPS = 485).
+- evidence of Depression -> PanUKB Loneliness, consistent across all MR methods (beta IVW = 0.477, p < 0.001, nSNPS = 131)
+- evidence of Depression -> Triglycerides -> consistent across IVW and WM (beta IVW = 0.156, p = 0.004, nSNPS = 60)
+- weak evidence of T2D -> AoU Loneliness only WM (beta WM = 0.72, p = 0.04, nSNPS = 6)
+- weak evidence of T2D -> PanUKB Loneliness only IVW (beta IVW = 0.035, p = 0.002, nSNPS = 395)
+- evidence of T2D -> Triglycerides, consistent across IVW and WM (beta IVW = 0.114, p < 0.001, nSNPS = 186)
+
+**so it looks like there is more evidence of an effect of T2D -> Triglycerides -> Loneliness, suggesting that immune vulnerability may cause loneliness, partly mediated through immune biomarkers**
+
+### Effect Forest Plots
+
+
+```{r forest plot}
+library(data.table)
+library(ggplot2)
+
+plot_data <- rbindlist(
+  list(
+    as.data.table(tsmr_results)[, direction := "Forward"],
+    as.data.table(tsmr_results_reverse)[, direction := "Reverse"]
+  ),
+  fill = TRUE
+)
+
+plot_data <- plot_data[
+  is.finite(b) & is.finite(se) & se >= 0
+]
+
+plot_data[, `:=`(
+  ci_low = b - 1.96 * se,
+  ci_high = b + 1.96 * se,
+  analysis = paste(exposure, "\u2192", outcome)
+)]
+
+plot_data <- plot_data[
+  !grepl("egger|wald ratio", method, ignore.case = TRUE)
+]
+
+
+# Keep rows grouped by direction and exposure/outcome.
+analysis_order <- unique(plot_data$analysis)
+plot_data[, analysis := factor(analysis, levels = rev(analysis_order))]
+
+p_mr_forest <- ggplot(
+  plot_data,
+  aes(x = b, y = analysis, color = method)
+) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey55") +
+  geom_errorbarh(
+    aes(xmin = ci_low, xmax = ci_high),
+    height = 0.18,
+    position = position_dodge(width = 0.65)
+  ) +
+  geom_point(
+    size = 2,
+    position = position_dodge(width = 0.65)
+  ) +
+  labs(
+    x = "MR effect estimate (b), with approximate 95% CI",
+    y = NULL,
+    color = "MR method",
+    title = "TwoSampleMR Bidirectional Analyses",
+    subtitle = "Including AoU Loneliness as Sensitivity"
+  ) +
+  theme_bw(base_size = 12) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    axis.line.y = element_blank(),
+    legend.position = "right"
+  )
+
+p_mr_forest
+```
+- bidirectional loneliness <-> depression effects
+
+### MRlap sensitivity analyses
+
+MRlap also accepts data frames with signed `BETA`/`SE` (and sample size), so the AoU summary statistics are converted into the same format above. This runs cross-trait LDSC and the overlap/weak-instrument/winner’s-curse correction for each pair.
+
+```{r mrlap}
+run_mrlap_pair <- function(exposure, outcome, exposure_name, outcome_name) {
+  MRlap::MRlap(
+    exposure = as.data.frame(exposure), exposure_name = exposure_name,
+    outcome = as.data.frame(outcome), outcome_name = outcome_name,
+    ld = LD_DIR, hm3 = HM3_FILE,
+    MR_threshold = 5e-8, MR_pruning_dist = 500, MR_pruning_LD = 0.001,
+    MR_plink = PLINK_BIN, MR_bfile = LD_BFILE,
+    save_logfiles = TRUE
+  )
+}
+
+mrlap_results <- list(
+  aou_to_tg = run_mrlap_pair(traits$aou_lonely, traits$tg, "AoU loneliness", "Triglycerides"),
+  aou_to_dep = run_mrlap_pair(traits$aou_lonely, traits$depression, "AoU loneliness", "Depression"),
+  panukb_to_tg = run_mrlap_pair(traits$pan_lonely, traits$tg, "PanUKB loneliness", "Triglycerides"),
+  panukb_to_dep = run_mrlap_pair(traits$pan_lonely, traits$depression, "PanUKB loneliness", "Depression"),
+  tg_to_dep = run_mrlap_pair(traits$tg, traits$depression, "Triglycerides", "Depression")
+)
+
+summarise_mrlap <- function(result, exposure, outcome) {
+  r <- result$MRcorrection
+  data.table(
+    exposure = exposure, outcome = outcome, n_instruments = r$m_IVs,
+    observed_effect = r$observed_effect, observed_se = r$observed_effect_se,
+    observed_p = r$observed_effect_p, corrected_effect = r$corrected_effect,
+    corrected_se = r$corrected_effect_se, corrected_p = r$corrected_effect_p,
+    p_observed_vs_corrected = r$p_difference
+  )
+}
+
+mrlap_table <- rbindlist(list(
+  summarise_mrlap(mrlap_results$aou_to_tg, "AoU loneliness", "Triglycerides"),
+  summarise_mrlap(mrlap_results$aou_to_dep, "AoU loneliness", "Depression"),
+  summarise_mrlap(mrlap_results$panukb_to_tg, "PanUKB loneliness", "Triglycerides"),
+  summarise_mrlap(mrlap_results$panukb_to_dep, "PanUKB loneliness", "Depression"),
+  summarise_mrlap(mrlap_results$tg_to_dep, "Triglycerides", "Depression")
+), fill = TRUE)
+
+fwrite(mrlap_table, file.path(OUT_DIR, "mrlap_results.csv"))
+saveRDS(mrlap_results, file.path(OUT_DIR, "mrlap_full_results.rds"))
+mrlap_table
+```

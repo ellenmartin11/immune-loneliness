@@ -1,0 +1,9 @@
+analysis,status
+AoU loneliness -> Triglycerides,skipped: no instrument overlap
+AoU loneliness -> Depression,completed
+PanUKB loneliness -> Triglycerides,completed
+PanUKB loneliness -> Depression,completed
+Triglycerides -> Depression,completed
+Aou loneliness -> Type 2 Diabetes,completed
+PanUKB loneliness -> Type 2 Diabetes,completed
+Triglycerides -> Type 2 Diabetes,completed

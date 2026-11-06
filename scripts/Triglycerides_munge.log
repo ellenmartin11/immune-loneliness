@@ -1,0 +1,27 @@
+The munging of 1 summary statistics started at 2026-11-06 12:44:34
+Reading in reference file
+Reading summary statistics for Triglycerides.tsv. Please note that this step usually takes a few minutes due to the size of summary statistic files.
+All files loaded into R!
+
+
+
+Munging file: Triglycerides.tsv
+Found REF and ALT columns in the summary statistic file Triglycerides.tsv. Please note that REF will be interpreted as A1 (effect allele) and ALT as A2 (other allele)
+Interpreting the RSID column as the SNP column.
+Interpreting the REF column as the A1 column.
+Interpreting the ALT column as the A2 column.
+Interpreting the Z column as the effect column.
+Interpreting the P column as the P column.
+Interpreting the N column as the N column.
+Merging file:Triglycerides.tsv with the reference file:/gpfs/gibbs/pi/polimanti/LDSC_files/eur_w_ld_chr/w_hm3.snplist
+590494 rows present in the full Triglycerides.tsv summary statistics file.
+0 rows were removed from the Triglycerides.tsv summary statistics file as the rs-ids for these rows were not present in the reference file.
+No INFO column, cannot filter on INFO, which may influence results
+No MAF column, cannot filter on MAF, which may influence results
+590494SNPs are left in the summary statistics file Triglycerides.tsv after QC.
+I am done munging file: Triglycerides.tsv
+The file is saved as Triglycerides.sumstats.gz in the current working directory.
+     
+Munging was completed at 2026-11-06 12:44:47
+The munging of all files took 0 minutes and 12.4586100578308 seconds
+Please check the .log file(s) to ensure that all columns were interpreted correctly and no warnings were issued for any of the summary statistics files
