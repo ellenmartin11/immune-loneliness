@@ -1,0 +1,14 @@
+comparison,note,error
+aou_to_dep,Not run: binary-trait pairs are excluded from this Steiger pass,
+aou_to_t2d,Not run: binary-trait pairs are excluded from this Steiger pass,
+panukb_to_dep,Not run: binary-trait pairs are excluded from this Steiger pass,
+panukb_to_t2d,Not run: binary-trait pairs are excluded from this Steiger pass,
+tg_to_dep,Not run: binary-trait pairs are excluded from this Steiger pass,
+tg_to_t2d,Not run: binary-trait pairs are excluded from this Steiger pass,
+tg_to_aou,,No harmonized SNP data available
+dep_to_aou,Not run: binary-trait pairs are excluded from this Steiger pass,
+dep_to_panukb,Not run: binary-trait pairs are excluded from this Steiger pass,
+dep_to_tg,Not run: binary-trait pairs are excluded from this Steiger pass,
+t2d_to_aou,Not run: binary-trait pairs are excluded from this Steiger pass,
+t2d_to_panukb,Not run: binary-trait pairs are excluded from this Steiger pass,
+t2d_to_tg,Not run: binary-trait pairs are excluded from this Steiger pass,
