@@ -35,3 +35,6 @@ DRINKS	Drinks Per Week GSCAN	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pip
 NEUROT	Neuroticism GPC	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Neuroticism_GPC.sumstats.gz	quantitative
 SLEEP	Sleep Duration PanUKB	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Sleep_Duration_PanUKB.sumstats.gz	quantitative
 CPD	Cigarettes per Day GSCAN	/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/munged/Cigarettes_per_Day_GSCAN.sumstats.gz	quantitative
+ASD	Autism PGC	/vast/palmer/pi/polimanti/ellen_m/immune/metal_ldsc_pipeline/munged/Autism_PGC.sumstats.gz	case_control
+HYTHY	Hypothyroidism	/vast/palmer/pi/polimanti/ellen_m/immune/metal_ldsc_pipeline/munged/Hypothyroidism.sumstats.gz	case_control
+GLYCA	Glycoprotein acetylation	/vast/palmer/pi/polimanti/ellen_m/immune/metal_ldsc_pipeline/munged/Glycoprotein_acetylation.sumstats.gz	quantitative

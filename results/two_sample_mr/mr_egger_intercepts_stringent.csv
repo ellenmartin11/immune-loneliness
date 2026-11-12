@@ -1,0 +1,17 @@
+id.exposure,id.outcome,outcome,exposure,egger_intercept,se,pval,comparison,error
+vAK33v,om3AZ7,Triglycerides,AoU loneliness,-0.00965235690041414,0.0115424670434888,0.435048340151198,aou_to_tg_stringent,
+1yZkg9,aaAuQ9,Depression,AoU loneliness,0.000101070390197941,0.0124217749860732,0.993822704354611,aou_to_dep_stringent,
+xL1dIK,heD6UY,Type 2 Diabetes,AoU loneliness,-0.0434297006466559,0.0214133397972896,0.0888899040783615,aou_to_t2d_stringent,
+WHavGw,SRVRGv,Triglycerides,PanUKB loneliness,0.00543483307900642,0.00415460179750604,0.282027879718028,panukb_to_tg_stringent,
+vFmBwX,J4gvij,Depression,PanUKB loneliness,0.0315321219565712,0.0116231134563718,0.0349719296861352,panukb_to_dep_stringent,
+baakAn,bEmnnO,Type 2 Diabetes,PanUKB loneliness,-0.0144026455695451,0.00947548057536251,0.1670010228921,panukb_to_t2d_stringent,
+MDUS7F,CHrPHi,Depression,Triglycerides,0.00182547669514778,0.000561680163096705,0.00125518798860979,tg_to_dep_stringent,
+2LzVey,sEClBf,Type 2 Diabetes,Triglycerides,0.0161126863679473,0.00151424998547752,1.17261129360223e-23,tg_to_t2d_stringent,
+,,,,,,,tg_to_aou_stringent,No harmonized SNP data available
+08hibe,hmwXdi,PanUKB loneliness,Triglycerides,0.00194096115265466,0.000759822638899602,0.010939950932522,tg_to_panukb_stringent,
+,,,,,,,dep_to_aou_stringent,At least three SNPs are needed for the Egger intercept test
+6vBIvw,QS9ZWF,PanUKB loneliness,Depression,0.000584782489008432,0.00386387965541645,0.879939257363124,dep_to_panukb_stringent,
+6CJJrp,l6CXSt,Triglycerides,Depression,0.00183760639100586,0.00600335187832835,0.760627058617363,dep_to_tg_stringent,
+vgwTXX,yUpCny,AoU loneliness,Type 2 Diabetes,-0.0210938064506458,0.0487028678217836,0.687265318839941,t2d_to_aou_stringent,
+lLue2C,kXnC3f,PanUKB loneliness,Type 2 Diabetes,0.00255903957426105,0.000989316479402256,0.0100501891263415,t2d_to_panukb_stringent,
+zJC9Ii,LoM2M7,Triglycerides,Type 2 Diabetes,0.00363789648770956,0.00150425300464463,0.0165631679303851,t2d_to_tg_stringent,

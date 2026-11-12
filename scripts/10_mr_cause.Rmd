@@ -1,0 +1,51 @@
+---
+title: "R Notebook for MR CAUSE"
+output: html_notebook
+---
+
+## MR CAUSE
+- CAUSE is used to address issues of correlated pleiotropy and is more robust
+
+```{r }
+library(readr)
+library(cause)
+library(dplyr)
+
+```
+
+#### Checking Loneliness <-> Triglycerides
+
+```{r loading loneliness and tg}
+PATH_PAN_LONELY <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/005_Loneliness_isolation_PanUKB_clean.tsv.gz"
+loneliness <- read_tsv(PATH_PAN_LONELY)
+
+PATH_TG <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/metal_ivw/Triglycerides_METAL_combined.tsv.gz"
+tg <- read_tsv(PATH_TG)
+
+colnames(loneliness)
+colnames(tg)
+```
+```{r checking colnames}
+head(loneliness)
+head(tg)
+
+```
+
+```{r harmonizing and formatting}
+lone_tg <- cause::gwas_merge(
+  loneliness,
+  tg,
+  snp_name_cols = c("SNP", "SNP"),
+  beta_hat_cols = c("BETA", "BETA"),
+  se_cols = c("SE", "SE"),
+  A1_cols = c("A1", "A1"),
+  A2_cols = c("A2", "A2")
+)
+```
+
+```{r}
+set.seed(100)
+varlist <- with(lone_tg, sample(snp, size=1000000, replace=FALSE))
+params <- est_cause_params(lone_tg, varlist)
+```
+

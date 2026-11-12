@@ -1,0 +1,2 @@
+phenotype	source	input_path	clean_path
+Autism PGC	PGC	/gpfs/gibbs/pi/polimanti/SUMMARY.STATISTICS/iPSYCH-PGC_ASD_Nov2017	/gpfs/gibbs/project/polimanti/ejm96/immune/scripts/cluster scripts/metal_ldsc_pipeline/v2/primary_clean_autism/001_Autism_PGC_clean.tsv.gz

@@ -27,6 +27,147 @@ library(GenomicSEM)
 covstruc <- readRDS("/vast/palmer/scratch/polimanti/ejm96/genomic_sem/LDSCoutput.rds")
 round(covstruc$S, 3)
 covstruc$N
+dim(covstruc$S)
+dim(covstruc$V)
+
+
+S <- covstruc$S
+V <- covstruc$V
+
+# Assign missing row names
+if (is.null(rownames(S))) {
+  rownames(S) <- colnames(S)
+}
+
+# Verify
+stopifnot(
+  identical(rownames(S), colnames(S)),
+  isSymmetric(S)
+)
+
+```
+```{r}
+head(colnames(covstruc$S))
+head(rownames(covstruc$V))
+head(colnames(covstruc$V))
+
+covstruc$V[1:5, 1:5]
+
+# Confirm S is symmetric
+isSymmetric(covstruc$S)
+
+# Confirm V is symmetric
+isSymmetric(covstruc$V)
+
+# Confirm matching dimensions
+nrow(covstruc$V) == nrow(covstruc$S) * (nrow(covstruc$S) + 1) / 2
+
+# Inspect available trait names
+colnames(covstruc$S)
+```
+### RG Heatmaps 
+- separated by families of phenotypes
+
+```{r }
+
+library(GenomicSEM)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(purrr)
+
+S <- covstruc$S
+V <- covstruc$V
+
+trait_families <- list(
+
+  Psychiatric = c(
+    "LONELY", "LONELY_AOU",
+    "ANX", "DEP", "PTSD", "ADHD",
+    "BIP", "ANOREXIA", "OCD", "SCZ", "ASD"
+  ),
+
+  Immune_Biomarkers = c(
+    "LONELY", "LONELY_AOU",
+    "LYMPH", "BASO", "EOS", "MONO",
+    "NEUT", "WBC", "PLT", "ALBUMIN",
+    "CRP", "TG", "IL6", "TNF", "GLYCA"
+  ),
+
+  Immune_Conditions = c(
+    "LONELY", "LONELY_AOU",
+    "ALL_RHINITIS", "ASTHMA",
+    "ATOPIC_DERMA", "CROHN",
+    "UC", "RA", "T2D", "HYTHY"
+  )
+
+)
+
+# check all traits exist (should return 0)
+lapply(
+  trait_families,
+  function(x) setdiff(x, colnames(S))
+)
+
+
+```
+```{r}
+source("functions/genomicsem_helpers.R")
+
+rg_results <- lapply(
+  trait_families,
+  make_rg_data
+)
+
+# check psychiatric correlations
+head(rg_results$Psychiatric)
+
+# Number of FDR-significant correlations per family
+sapply(
+  rg_results,
+  function(x) sum(x$p_fdr < 0.05, na.rm = TRUE)
+)
+
+rg_results <- lapply(
+  trait_families,
+  make_rg_data
+)
+
+head(rg_results$Psychiatric)
+
+```
+#### Loop through families to generate heatmaps
+
+```{r}
+rg_results <- lapply(trait_families, make_rg_data)
+
+# Inspect results
+head(rg_results$Psychiatric)
+
+# Check for invalid or out-of-range correlations
+lapply(rg_results, function(x) {
+  x[!is.finite(x$rg) | abs(x$rg) > 1, ]
+})
+
+# Count FDR-significant correlations
+sapply(rg_results, function(x) {
+  sum(x$p_fdr < 0.05, na.rm = TRUE)
+})
+```
+
+```{r}
+source("functions/genomicsem_helpers.R")
+
+for (family in names(trait_families)) {
+
+  plot_family_heatmap(
+    family = family,
+    traits = trait_families[[family]],
+    results = rg_results[[family]],
+    S = S
+  )
+
+}
 ```
 
 #### Checking Correlations and QC of GenomicSEM LDSC
@@ -58,13 +199,14 @@ psych_adjusted <- '
   PTSD_F     =~ 1*PTSD
   ADHD_F     =~ 1*ADHD
   ANOREXIA_F =~ 1*ANOREXIA
+  ASD_F      =~ 1*ASD
   OCD_F      =~ 1*OCD
   SCZ_F      =~ 1*SCZ
   INCOME_F   =~ 1*INCOME
   BMI_F      =~ 1*BMI
   LONELY_F   =~ 1*LONELY
 
-  LONELY_F ~ ANX_F + DEP_F + PTSD_F + ADHD_F +
+  LONELY_F ~ ANX_F + DEP_F + PTSD_F + ADHD_F + ASD_F + 
              ANOREXIA_F + OCD_F + SCZ_F + INCOME_F + BMI_F
              
 '
@@ -170,8 +312,8 @@ setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
 ggsave(
   "results/genomic_sem/p_unstand_psych.png",
   plot = p_unstand_psych,
-  width = 8,
-  height = 6,
+  width = 6,
+  height = 8,
   units = "in",
   dpi = 300,
   bg = "white"
@@ -180,8 +322,8 @@ ggsave(
 ggsave(
   "results/genomic_sem/p_unstand_psych.svg",
   plot = p_unstand_psych,
-  width = 8,
-  height = 6,
+  width = 6,
+  height = 8,
   units = "in",
   bg = "white"
 )
@@ -357,11 +499,12 @@ biomarker_adjusted <- '
   CRP_F       =~ 1*CRP
   TG_F        =~ 1*TG
   IL6_F       =~ 1*IL6
+  GLYCA_F     =~ 1*GLYCA
   INCOME_F    =~ 1*INCOME
   BMI_F       =~ 1*BMI
   LONELY_F    =~ 1*LONELY
 
-  LONELY_F ~ LYMPH_F + EOS_F + MONO_F + NEUT_F 
+  LONELY_F ~ LYMPH_F + EOS_F + MONO_F + NEUT_F + GLYCA_F
             + PLT_F + ALBUMIN_F + CRP_F + TG_F + + IL6_F + INCOME_F + BMI_F
              
 '
@@ -465,8 +608,8 @@ setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
 ggsave(
   "results/genomic_sem/p_unstand_biomarkers.png",
   plot = p_unstand_biomarker,
-  width = 8,
-  height = 6,
+  width = 6,
+  height = 8,
   units = "in",
   dpi = 300,
   bg = "white"
@@ -475,8 +618,8 @@ ggsave(
 ggsave(
   "results/genomic_sem/p_unstand_biomarkers.svg",
   plot = p_unstand_biomarker,
-  width = 8,
-  height = 6,
+  width = 6,
+  height = 8,
   units = "in",
   bg = "white"
 )
@@ -618,8 +761,8 @@ setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
 ggsave(
   "results/genomic_sem/p_unstand_immune.png",
   plot = p_unstand_immune,
-  width = 8,
-  height = 6,
+  width = 6,
+  height = 8,
   units = "in",
   dpi = 300,
   bg = "white"
@@ -628,8 +771,8 @@ ggsave(
 ggsave(
   "results/genomic_sem/p_unstand_immune.svg",
   plot = p_unstand_immune,
-  width = 8,
-  height = 6,
+  width = 6,
+  height = 8,
   units = "in",
   bg = "white"
 )
@@ -782,8 +925,8 @@ setwd("/gpfs/gibbs/project/polimanti/ejm96/immune/")
 ggsave(
   "results/genomic_sem/p_unstand_joint.png",
   plot = p_unstand_joint,
-  width = 8,
-  height = 6,
+  width = 6,
+  height = 8,
   units = "in",
   dpi = 300,
   bg = "white"
@@ -792,8 +935,8 @@ ggsave(
 ggsave(
   "results/genomic_sem/p_unstand_joint.svg",
   plot = p_unstand_joint,
-  width = 8,
-  height = 6,
+  width = 6,
+  height = 8,
   units = "in",
   bg = "white"
 )
@@ -827,8 +970,8 @@ source("genomicsem_1_interactive.R")
 ```
 
 ```{r specify mediators and outcomes}
-mediators <- c("TG", "NEUT", "CRP", "ALBUMIN")
-outcomes  <- c("DEP", "PTSD", "ANX", "ADHD", "ASTHMA", "T2D")
+mediators <- c("TG", "NEUT", "CRP", "ALBUMIN", "PLT")
+outcomes  <- c("DEP", "PTSD", "ANX", "ADHD", "ASTHMA", "T2D", "ALL_RHINITIS")
 ```
 
 ```{r looping through mediators and outcomes}
@@ -837,7 +980,7 @@ library(GenomicSEM)
 med_fits <- list()
 for (m in mediators) {
   for (o in outcomes) {
-    med_fits[[paste(m, o, sep = "_2_")]] <- quiet(fit_med(m, o))
+    med_fits[[paste(m, o, sep = "_2_")]] <- fit_med(m, o)
   }
 }
 ```
@@ -857,9 +1000,9 @@ write.csv(med_tab, "results/genomic_sem/mediation_paths.csv", row.names = FALSE)
 
 ```{r plotting indirect effects}
 med_plot_df <- med_tab
-med_plot_df$mediator <- factor(med_plot_df$mediator, levels = c("TG", "NEUT", "CRP", "ALBUMIN"))
+med_plot_df$mediator <- factor(med_plot_df$mediator, levels = c("TG", "NEUT", "CRP", "ALBUMIN", "PLT"))
 med_plot_df$outcome  <- factor(med_plot_df$outcome,
-                               levels = c("DEP", "PTSD", "ANX", "ADHD", "ASTHMA", "T2D"))
+                               levels = c("DEP", "PTSD", "ANX", "ADHD", "ASTHMA", "T2D", "ALL_RHINITIS"))
 
 p_med <- ggplot(
   med_plot_df,
@@ -1012,6 +1155,7 @@ ggsave(
 psych_adjusted_sensitivity <- '
   ANX_F      =~ 1*ANX
   DEP_F      =~ 1*DEP
+  ASD_F      =~ 1*ASD
   PTSD_F     =~ 1*PTSD
   ADHD_F     =~ 1*ADHD
   ANOREXIA_F =~ 1*ANOREXIA
@@ -1021,7 +1165,7 @@ psych_adjusted_sensitivity <- '
   BMI_F      =~ 1*BMI
   LONELY_F   =~ 1*LONELY_AOU
 
-  LONELY_F ~ ANX_F + DEP_F + PTSD_F + ADHD_F  +
+  LONELY_F ~ ANX_F + DEP_F + PTSD_F + ADHD_F  + ASD_F + 
              ANOREXIA_F + OCD_F + SCZ_F + INCOME_F + BMI_F
              
 '
@@ -1129,12 +1273,13 @@ biomarker_adjusted_sensitivity <- '
   ALBUMIN_F   =~ 1*ALBUMIN
   CRP_F       =~ 1*CRP
   TG_F        =~ 1*TG
+  GLYCA_F     =~ 1*GLYCA
   IL6_F       =~ 1*IL6
   INCOME_F    =~ 1*INCOME
   BMI_F       =~ 1*BMI
   LONELY_F    =~ 1*LONELY_AOU
 
-  LONELY_F ~ LYMPH_F + EOS_F + MONO_F + NEUT_F 
+  LONELY_F ~ LYMPH_F + EOS_F + MONO_F + NEUT_F + GLYCA_F
             + PLT_F + ALBUMIN_F + CRP_F + TG_F + IL6_F  + INCOME_F + BMI_F
              
 '
@@ -1351,7 +1496,6 @@ full_adjusted_sensitivity <- '
   BMI_F      =~ 1*BMI
   LONELY_F   =~ 1*LONELY_AOU
   NEUT_F      =~ 1*NEUT
-  ALBUMIN_F   =~ 1*ALBUMIN
   CRP_F       =~ 1*CRP
   TG_F        =~ 1*TG
   IL6_F       =~ 1*IL6
@@ -1359,7 +1503,7 @@ full_adjusted_sensitivity <- '
   T2D_F       =~ 1*T2D
   
   LONELY_F ~ ANX_F + DEP_F + PTSD_F + ADHD_F
-            + NEUT_F + ALBUMIN_F + CRP_F + TG_F + IL6_F + ASTHMA_F + T2D_F + 
+            + NEUT_F + CRP_F + TG_F + IL6_F + ASTHMA_F + T2D_F + 
              + INCOME_F + BMI_F
              
 '
@@ -1635,4 +1779,24 @@ fit_immune_adjusted_neur
 ```
 - neuroticism associated with asthma, T2D, income and loneliness only 
 
+
+#### Specific Mediation Model
+- T2D -> Triglycerides -> Loneliness
+- actually this ends up being the exact same estimate as Loneliness -> Triglycerides -> T2D (mathematically)
+
+
+```{r}
+model_mr <- paste(
+  "LONELY ~ a*T2D + c*TG + INCOME + BMI",
+  "TG ~ b*T2D + INCOME + BMI",
+  "ind := b*c",
+  sep = "
+")
+
+mr_mediation_model <- usermodel(covstruc, estimation = "DWLS", model = model_mr)
+
+results_mr_mediation_model <- mr_mediation_model$results
+
+knitr::kable(results_mr_mediation_model[results_mr_mediation_model$op == "~", ], digits = 3)
+```
 

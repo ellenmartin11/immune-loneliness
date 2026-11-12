@@ -1,3 +1,18 @@
-The munging of 1 summary statistics started at 2026-11-06 12:47:51
+The munging of 1 summary statistics started at 2026-11-09 14:27:45
 Reading in reference file
 Reading summary statistics for AoU loneliness.tsv. Please note that this step usually takes a few minutes due to the size of summary statistic files.
+All files loaded into R!
+
+
+
+Munging file: AoU loneliness.tsv
+Found REF and ALT columns in the summary statistic file AoU loneliness.tsv. Please note that REF will be interpreted as A1 (effect allele) and ALT as A2 (other allele)
+Interpreting the RSID column as the SNP column.
+Interpreting the REF column as the A1 column.
+Interpreting the ALT column as the A2 column.
+Interpreting the Z column as the effect column.
+Interpreting the P column as the P column.
+Interpreting the N column as the N column.
+Merging file:AoU loneliness.tsv with the reference file:/gpfs/gibbs/pi/polimanti/LDSC_files/eur_w_ld_chr/w_hm3.snplist
+8400044 rows present in the full AoU loneliness.tsv summary statistics file.
+8400044 rows were removed from the AoU loneliness.tsv summary statistics file as the rs-ids for these rows were not present in the reference file.

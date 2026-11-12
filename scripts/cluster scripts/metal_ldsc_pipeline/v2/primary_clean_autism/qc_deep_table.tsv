@@ -1,0 +1,2 @@
+"phenotype"	"status"	"n_rows"	"n_unique_snp"	"n_snp_na"	"n_dup_snp"	"n_dup_multiallelic"	"n_dup_pos_conflict"	"n_dup_identical"	"pct_rs_ids"	"pct_acgt_alleles"	"n_same_allele"	"pct_frq_bad"	"pct_frq_rare"	"pct_z_eq_beta_se"	"pct_sign_disagree"	"corr_absZ_vs_P"	"pct_p_bad"	"pct_coord_missing"	"pct_bp_beyond_grch37"	"n_min"	"n_median"	"n_max"	"n_eff_cc"	"columns"
+"Autism PGC"	"ok"	8803954	8803954	0	0	0	0	0	100	90.1	0	NA	NA	100	0	1	0	0	0.265	NA	NA	NA	15867	"SNP|CHR|BP|A1|A2|BETA|SE|P|Z|INFO|N_CASE|N_CONTROL"

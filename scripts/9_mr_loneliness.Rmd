@@ -13,13 +13,21 @@ knitr::opts_chunk$set(echo = TRUE, message = TRUE, warning = TRUE)
 
 Primary analyses: PanUKB loneliness → triglycerides → depression. AoU loneliness is a sensitivity exposure. The pairwise analyses below estimate each link; they do not, by themselves, estimate a formal indirect/mediation effect.
 
+Notes:
+- everything should be Hg38 build for coordinates, so make sure plink build is correct
+- 
+
 ### Setup and paths
 
-```{r paths}
+```{r paths, echo=FALSE, cache=TRUE}
 library(data.table)
 library(TwoSampleMR)
 library(ieugwasr)
 library(MRlap)
+library(GenomicRanges)
+library(IRanges)
+library(SNPlocs.Hsapiens.dbSNP155.GRCh38)
+
 
 PATH_AOU_LONELY <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/UCLA_loneliness_scale_eur.tsv"
 PATH_PAN_LONELY <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/005_Loneliness_isolation_PanUKB_clean.tsv.gz"
@@ -31,7 +39,7 @@ PLINK_BIN <- "/vast/palmer/apps/avx2/software/PLINK/1.9b_6.21-x86_64/plink"
 LD_BFILE <- "/gpfs/gibbs/pi/polimanti/LDSC_1000G/g1000_eur"
 LD_DIR <- "/gpfs/gibbs/pi/polimanti/LDSC_files/eur_w_ld_chr/"
 HM3_FILE <- "/gpfs/gibbs/pi/polimanti/LDSC_files/eur_w_ld_chr/w_hm3.snplist"
-OUT_DIR <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/mrlap_results"
+OUT_DIR <- "/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr"
 dir.create(OUT_DIR, recursive = TRUE, showWarnings = FALSE)
 
 input_paths <- c(
@@ -58,7 +66,7 @@ The AoU file uses `CHROM`, `GENPOS`, `ID`, `ALLELE0`, `ALLELE1`, `N`, `TEST`, `B
 
 Other files are expected to have the standardized columns `SNP`, `A1`, `A2`, `BETA`, `SE`, `P`, and `N` (with optional `CHR`, `BP`, `EAF`).
 
-```{r readers}
+```{r readers, include=FALSE, cache=TRUE}
 read_aou <- function(path) {
   x <- fread(path)
   required <- c("CHROM", "GENPOS", "ID", "ALLELE0", "ALLELE1", "N",
@@ -127,8 +135,10 @@ vapply(traits, nrow, integer(1))
 ```
 
 ### TwoSampleMR
+- Note, this uses a reduced thrshold of 5e-6 
+- 5e-8 will be run as sensitivity analyses, but not many things survive
 
-```{r twosamplemr}
+```{r twosamplemr helper functions, echo=FALSE}
 to_tsmr <- function(x, type, trait_name) {
   if (!nrow(x)) stop("No variants to format for ", trait_name, " (", type, ").")
   d <- as.data.frame(x)
@@ -140,72 +150,247 @@ to_tsmr <- function(x, type, trait_name) {
   )
 }
 
-clump_exposure <- function(x) {
-  iv <- x[P < 5e-6]
-  message("5e-6 significant variants before clumping: ", nrow(iv))
-  if (!nrow(iv)) {
-    stop("No variants pass P < 5e-6. Check the exposure P-values and their scale.")
+# helper function to specifically convert AoU CHR:BP to rsIDs
+map_aou_to_rsid <- function(x) {
+  x <- data.table::copy(data.table::as.data.table(x))
+
+  required <- c("SNP", "CHR", "BP", "A1", "A2")
+  missing <- setdiff(required, names(x))
+  if (length(missing)) {
+    stop("Missing columns for rsID mapping: ",
+         paste(missing, collapse = ", "))
   }
 
-  # Prefer matching by SNP ID; coordinate/allele matching handles AoU IDs
-  # such as chr3:158505502:A:G when the reference uses rsIDs.
-  bim <- fread(paste0(LD_BFILE, ".bim"), header = FALSE,
-               col.names = c("ref_chr", "ref_snp", "cm", "ref_bp", "ref_a1", "ref_a2"))
-  bim[, `:=`(
-    ref_chr = sub("^chr", "", as.character(ref_chr), ignore.case = TRUE),
-    ref_bp = as.numeric(ref_bp),
-    ref_a1 = toupper(as.character(ref_a1)),
-    ref_a2 = toupper(as.character(ref_a2))
-  )]
+  dbsnp <- SNPlocs.Hsapiens.dbSNP155.GRCh38
+  available_seqnames <- GenomeInfoDb::seqlevels(dbsnp)
 
-  overlap <- iv[SNP %chin% bim$ref_snp]
-  if (nrow(overlap)) {
-    overlap[, clump_id := SNP]
-    message("Significant variants matching reference-panel IDs: ", nrow(overlap))
-  } else {
-    if (!all(c("CHR", "BP") %in% names(iv))) {
-      stop("No SNP-ID overlap with the PLINK panel, and the GWAS has no CHR/BP columns for coordinate matching.")
-    }
-    query <- copy(iv)
-    query[, `:=`(
-      q_chr = sub("^chr", "", as.character(CHR), ignore.case = TRUE),
-      q_bp = as.numeric(BP),
-      q_a1 = toupper(as.character(A1)),
-      q_a2 = toupper(as.character(A2))
-    )]
-    query[, `:=`(q_lo = pmin(q_a1, q_a2), q_hi = pmax(q_a1, q_a2))]
-    bim[, `:=`(r_lo = pmin(ref_a1, ref_a2), r_hi = pmax(ref_a1, ref_a2))]
-    matched <- merge(
-      query, bim,
-      by.x = c("q_chr", "q_bp", "q_lo", "q_hi"),
-      by.y = c("ref_chr", "ref_bp", "r_lo", "r_hi"),
-      all = FALSE, allow.cartesian = FALSE
-    )
-    # Keep only unambiguous one-to-one coordinate/allele matches.
-    matched <- matched[, if (.N == 1L) .SD, by = SNP]
-    matched[, clump_id := ref_snp]
-    overlap <- matched
-    message("Significant variants matched by chromosome, position, and allele pair: ", nrow(overlap))
-    if (!nrow(overlap)) {
-      stop("No coordinate/allele matches to the PLINK panel. Check that GWAS and reference use the same genome build and allele representation.")
-    }
-  }
+  chr <- sub("^chr", "", as.character(x$CHR), ignore.case = TRUE)
+  bp <- suppressWarnings(as.integer(x$BP))
 
-  cl <- ieugwasr::ld_clump_local(
-    dat = data.frame(rsid = overlap$clump_id, pval = overlap$P),
-    clump_kb = 10000, clump_r2 = 0.001, clump_p = 5e-8,
-    bfile = LD_BFILE, plink_bin = PLINK_BIN
+  # Match the chromosome naming convention used by the dbSNP package.
+  seqname <- ifelse(
+    chr %in% available_seqnames,
+    chr,
+    paste0("chr", chr)
   )
-  if (is.null(cl) || !nrow(cl)) {
-    stop("PLINK returned no clumped instruments although reference-matched significant SNPs were supplied.")
+
+  valid <- is.finite(bp) & bp > 0 &
+    seqname %in% available_seqnames &
+    !is.na(x$A1) & !is.na(x$A2)
+
+  rows <- which(valid)
+  if (!length(rows)) {
+    warning("No rows had usable chromosome and position values.")
+    return(x)
   }
-  kept <- overlap[clump_id %chin% cl$rsid]
+
+  query <- GenomicRanges::GRanges(
+    seqnames = seqname[rows],
+    ranges = IRanges::IRanges(start = bp[rows], end = bp[rows])
+  )
+
+  snp_hits <- BSgenome::snpsByOverlaps(dbsnp, query)
+  if (!length(snp_hits)) {
+    warning("No coordinates matched the GRCh38 dbSNP annotation.")
+    return(x)
+  }
+
+  overlaps <- GenomicRanges::findOverlaps(query, snp_hits, ignore.strand = TRUE)
+  if (!length(overlaps)) {
+    warning("No coordinate overlaps were returned by dbSNP.")
+    return(x)
+  }
+
+  meta <- S4Vectors::mcols(snp_hits)
+  rsid <- as.character(meta$RefSNP_id)
+  rsid <- ifelse(grepl("^rs", rsid, ignore.case = TRUE), rsid,
+                 paste0("rs", rsid))
+  allele_code <- as.character(meta$alleles_as_ambig)
+
+  # Decode IUPAC allele codes, e.g. R = A/G.
+  iupac <- Biostrings::IUPAC_CODE_MAP
+
+  decode_alleles <- function(code) {
+    if (is.na(code) || !code %in% names(iupac)) return(character())
+    strsplit(unname(iupac[code]), "", fixed = TRUE)[[1]]
+  }
+
+  qh <- S4Vectors::queryHits(overlaps)
+  sh <- S4Vectors::subjectHits(overlaps)
+
+  matched <- vector("list", length(rows))
+
+  for (k in seq_along(qh)) {
+    i <- qh[k]                 # row within the query
+    j <- sh[k]                 # matching dbSNP record
+    db_alleles <- decode_alleles(allele_code[j])
+
+    if (length(db_alleles) != 2L) next
+
+    gwas_alleles <- toupper(c(x$A1[rows[i]], x$A2[rows[i]]))
+    if (identical(sort(db_alleles), sort(gwas_alleles))) {
+      matched[[i]] <- c(matched[[i]], rsid[j])
+    }
+  }
+
+  # Assign an rsID only when exactly one distinct matching ID remains.
+  mapped_n <- 0L
+  for (i in seq_along(rows)) {
+    ids <- unique(matched[[i]])
+    if (length(ids) == 1L) {
+      x$SNP[rows[i]] <- ids
+      mapped_n <- mapped_n + 1L
+    }
+  }
+
+  message("Mapped ", mapped_n, " of ", length(rows),
+          " coordinate/allele records to unique rsIDs.")
+  x
+}
+
+### uses 5e-6 threshold 
+clump_exposure <- function(x, p_threshold = 5e-6) {
+  x <- data.table::copy(data.table::as.data.table(x))
+
+  iv <- x[is.finite(P) & P < p_threshold]
+  message("Variants passing P < ", format(p_threshold), ": ", nrow(iv))
+
+  if (!nrow(iv)) {
+    stop("No variants pass the instrument p-value threshold.")
+  }
+
+  # The AoU exposure has coordinate-based IDs; map those candidates to rsIDs.
+  if (any(!grepl("^rs[0-9]+$", iv$SNP, ignore.case = TRUE))) {
+    iv <- map_aou_to_rsid(iv)
+  }
+
+  # PLINK can only clump variants represented in its .bim file.
+  bim_path <- paste0(LD_BFILE, ".bim")
+  if (!file.exists(bim_path)) {
+    stop("PLINK .bim file not found: ", bim_path)
+  }
+
+  bim_ids <- data.table::fread(
+    bim_path,
+    select = 2L,
+    header = FALSE,
+    colClasses = "character"
+  )[[1L]]
+
+  iv <- iv[!is.na(SNP) & SNP %chin% bim_ids]
+  message("Candidates with rsIDs present in PLINK panel: ", nrow(iv))
+
+  if (!nrow(iv)) {
+    stop("No candidate rsIDs are present in the PLINK reference panel.")
+  }
+
+  # Remove all records for any rsID duplicated after coordinate mapping.
+  duplicate_ids <- iv[, .N, by = SNP][N > 1L, SNP]
+  if (length(duplicate_ids)) {
+    message("Dropping ", length(duplicate_ids),
+            " duplicated rsIDs after mapping.")
+    iv <- iv[!SNP %chin% duplicate_ids]
+  }
+
+  if (!nrow(iv)) {
+    stop("No unique candidate variants remain for clumping.")
+  }
+
+  clumped <- ieugwasr::ld_clump_local(
+    dat = data.frame(rsid = iv$SNP, pval = iv$P),
+    clump_kb = 10000,
+    clump_r2 = 0.001,
+    clump_p = p_threshold,
+    bfile = LD_BFILE,
+    plink_bin = PLINK_BIN
+  )
+
+  if (is.null(clumped) || !nrow(clumped)) {
+    stop("PLINK returned no clumped instruments.")
+  }
+
+  kept <- iv[SNP %chin% clumped$rsid]
   message("Independent instruments after clumping: ", nrow(kept))
-  if (!nrow(kept)) stop("No instruments remained after local LD clumping.")
-  # Carry the reference-panel ID forward so it can match rsID-based outcomes.
-  kept[, SNP := clump_id]
+
+  if (!nrow(kept)) {
+    stop("No instruments remained after local LD clumping.")
+  }
+
   kept
 }
+
+# clump exposure stringent
+clump_exposure_stringent <- function(x, p_threshold = 5e-8) {
+  x <- data.table::copy(data.table::as.data.table(x))
+
+  iv <- x[is.finite(P) & P < p_threshold]
+  message("Variants passing P < ", format(p_threshold), ": ", nrow(iv))
+
+  if (!nrow(iv)) {
+    stop("No variants pass the instrument p-value threshold.")
+  }
+
+  # The AoU exposure has coordinate-based IDs; map those candidates to rsIDs.
+  if (any(!grepl("^rs[0-9]+$", iv$SNP, ignore.case = TRUE))) {
+    iv <- map_aou_to_rsid(iv)
+  }
+
+  # PLINK can only clump variants represented in its .bim file.
+  bim_path <- paste0(LD_BFILE, ".bim")
+  if (!file.exists(bim_path)) {
+    stop("PLINK .bim file not found: ", bim_path)
+  }
+
+  bim_ids <- data.table::fread(
+    bim_path,
+    select = 2L,
+    header = FALSE,
+    colClasses = "character"
+  )[[1L]]
+
+  iv <- iv[!is.na(SNP) & SNP %chin% bim_ids]
+  message("Candidates with rsIDs present in PLINK panel: ", nrow(iv))
+
+  if (!nrow(iv)) {
+    stop("No candidate rsIDs are present in the PLINK reference panel.")
+  }
+
+  # Remove all records for any rsID duplicated after coordinate mapping.
+  duplicate_ids <- iv[, .N, by = SNP][N > 1L, SNP]
+  if (length(duplicate_ids)) {
+    message("Dropping ", length(duplicate_ids),
+            " duplicated rsIDs after mapping.")
+    iv <- iv[!SNP %chin% duplicate_ids]
+  }
+
+  if (!nrow(iv)) {
+    stop("No unique candidate variants remain for clumping.")
+  }
+
+  clumped <- ieugwasr::ld_clump_local(
+    dat = data.frame(rsid = iv$SNP, pval = iv$P),
+    clump_kb = 10000,
+    clump_r2 = 0.001,
+    clump_p = p_threshold,
+    bfile = LD_BFILE,
+    plink_bin = PLINK_BIN
+  )
+
+  if (is.null(clumped) || !nrow(clumped)) {
+    stop("PLINK returned no clumped instruments.")
+  }
+
+  kept <- iv[SNP %chin% clumped$rsid]
+  message("Independent instruments after clumping: ", nrow(kept))
+
+  if (!nrow(kept)) {
+    stop("No instruments remained after local LD clumping.")
+  }
+
+  kept
+}
+
+# relaxed 5e-6
 
 run_tsmr_pair <- function(exposure, outcome, exposure_name, outcome_name) {
   exp_iv <- clump_exposure(exposure)
@@ -264,16 +449,96 @@ run_tsmr_pair <- function(exposure, outcome, exposure_name, outcome_name) {
   )
 }
 
+# stringent 5e-8
+run_tsmr_pair_stringent <- function(exposure, outcome, exposure_name, outcome_name) {
+  exp_iv <- clump_exposure_stringent(exposure)
+  exp_dat <- to_tsmr(exp_iv, "exposure", exposure_name)
+
+  # First match IDs directly. If they differ, match variants by coordinates
+  # and the unordered allele pair (requires the same genome build).
+  outcome_rows <- outcome[SNP %chin% exp_iv$SNP]
+  if (!nrow(outcome_rows) && all(c("CHR", "BP") %in% names(exp_iv)) &&
+      all(c("CHR", "BP") %in% names(outcome))) {
+    e <- copy(exp_iv)
+    o <- copy(outcome)
+    e[, `:=`(match_chr = sub("^chr", "", as.character(CHR), ignore.case = TRUE),
+             match_bp = as.numeric(BP),
+             allele_lo = pmin(A1, A2), allele_hi = pmax(A1, A2))]
+    o[, `:=`(match_chr = sub("^chr", "", as.character(CHR), ignore.case = TRUE),
+             match_bp = as.numeric(BP),
+             allele_lo = pmin(A1, A2), allele_hi = pmax(A1, A2))]
+    outcome_rows <- merge(
+      o, unique(e[, .(match_chr, match_bp, allele_lo, allele_hi, SNP)]),
+      by = c("match_chr", "match_bp", "allele_lo", "allele_hi"),
+      all = FALSE, allow.cartesian = FALSE, suffixes = c("", "_exposure")
+    )
+    if (nrow(outcome_rows)) {
+      outcome_rows[, SNP := SNP_exposure]
+      outcome_rows[, SNP_exposure := NULL]
+    }
+  }
+  if (!nrow(outcome_rows)) {
+    warning("Skipping ", exposure_name, " -> ", outcome_name,
+            ": none of the retained exposure instruments is present in the outcome by SNP ID or exact chromosome/position/alleles.")
+    return(list(
+      status = "skipped: no instrument overlap",
+      harmonised = data.table(),
+      mr = data.table(),
+      heterogeneity = NULL,
+      pleiotropy = NULL
+    ))
+  }
+
+  out_dat <- to_tsmr(outcome_rows, "outcome", outcome_name)
+  harm <- TwoSampleMR::harmonise_data(exp_dat, out_dat, action = 3)
+  harm <- subset(harm, mr_keep)
+  if (!nrow(harm)) stop("No harmonized instruments for ", exposure_name, " -> ", outcome_name)
+  methods <- if (nrow(harm) == 1L) {
+    "mr_wald_ratio"
+  } else {
+    c("mr_ivw", "mr_weighted_median", "mr_egger_regression")
+  }
+  list(
+    status = "completed",
+    harmonised = harm,
+    mr = TwoSampleMR::mr(harm, method_list = methods),
+    heterogeneity = if (nrow(harm) >= 2) TwoSampleMR::mr_heterogeneity(harm) else NULL,
+    pleiotropy = if (nrow(harm) >= 3) TwoSampleMR::mr_pleiotropy_test(harm) else NULL
+  )
+}
+
+```
+
+#### Relaxed Threshold Two-Sample MR
+- 5e-6
+```{r run twosamplemr, include=FALSE, cache=TRUE}
+
+# Aou loneliness -> Triglycerides
 tsmr_aou_tg <- run_tsmr_pair(traits$aou_lonely, traits$tg, "AoU loneliness", "Triglycerides")
+
+# Aou loneliness -> Depression
 tsmr_aou_dep <- run_tsmr_pair(traits$aou_lonely, traits$depression, "AoU loneliness", "Depression")
+
+# PanUKB Lonleiness -> Triglycerides
 tsmr_pan_tg <- run_tsmr_pair(traits$pan_lonely, traits$tg, "PanUKB loneliness", "Triglycerides")
+
+# PanUKB Loneliness -> Depression
 tsmr_pan_dep <- run_tsmr_pair(traits$pan_lonely, traits$depression, "PanUKB loneliness", "Depression")
+
+
+# Triglycericdes --> Depression
 tsmr_tg_dep <- run_tsmr_pair(traits$tg, traits$depression, "Triglycerides", "Depression")
+
+# Aou Loneliness -> T2D
 tsmr_aou_t2d <-  run_tsmr_pair(traits$aou_lonely, traits$t2d, "AoU loneliness", "Type 2 Diabetes")
+
+# PanUKB loneliness -> T2D
 tsmr_pan_t2d <-  run_tsmr_pair(traits$pan_lonely, traits$t2d, "PanUKB loneliness", "Type 2 Diabetes")
+
+# Triglyceriudes --> T2D
 tsmr_tg_t2d <-  run_tsmr_pair(traits$tg, traits$t2d, "Triglycerides", "Type 2 Diabetes")
 
-
+# bind results together
 tsmr_results <- rbindlist(list(
   tsmr_aou_tg$mr, tsmr_aou_dep$mr, tsmr_pan_tg$mr,
   tsmr_pan_dep$mr, tsmr_tg_dep$mr, tsmr_aou_t2d$mr, 
@@ -286,7 +551,7 @@ tsmr_status <- data.table(
                "PanUKB loneliness -> Triglycerides", 
                "PanUKB loneliness -> Depression",
                "Triglycerides -> Depression",
-               "Aou loneliness -> Type 2 Diabetes",
+               "AoU loneliness -> Type 2 Diabetes",
                "PanUKB loneliness -> Type 2 Diabetes",
                "Triglycerides -> Type 2 Diabetes"),
   status = vapply(list(tsmr_aou_tg, tsmr_aou_dep, tsmr_pan_tg,
@@ -294,8 +559,86 @@ tsmr_status <- data.table(
                        tsmr_pan_t2d, tsmr_tg_t2d ), `[[`, character(1), "status")
 )
 fwrite(tsmr_status, file.path(OUT_DIR, "twosamplemr_status.csv"))
-
 ```
+
+
+#### Check Mapping Issues
+- with AoU Chr:BP specifically
+
+```{r mapping issues, echo=FALSE}
+library(data.table)
+
+# Apply the same significance threshold used by clump_exposure().
+candidates <- traits$aou_lonely[is.finite(P) & P < 5e-6]
+
+# Map AoU coordinate IDs to GRCh38 dbSNP rsIDs.
+mapped <- map_aou_to_rsid(candidates)
+
+bim_ids <- fread(
+  paste0(LD_BFILE, ".bim"),
+  select = 2L,
+  header = FALSE,
+  colClasses = "character"
+)[[1L]]
+
+cat("Significant candidates:", nrow(candidates), "\n")
+cat("Candidates mapped to rsIDs:", sum(grepl("^rs[0-9]+$", mapped$SNP)), "\n")
+cat("Unique rsIDs in BIM:", uniqueN(bim_ids), "\n")
+cat("Mapped rsIDs present in BIM:",
+    sum(unique(mapped$SNP) %chin% unique(bim_ids)), "\n")
+
+cat("\nExample mapped IDs:\n")
+print(head(mapped$SNP, 10))
+
+cat("\nExample BIM IDs:\n")
+print(head(bim_ids, 10))
+
+cat("\nMapped IDs not found in BIM:\n")
+print(head(setdiff(unique(mapped$SNP), unique(bim_ids)), 10))
+
+print(head(candidates[, .(SNP, CHR, BP, A1, A2)], 10))
+str(candidates[, .(SNP, CHR, BP, A1, A2)])
+
+mapped <- map_aou_to_rsid(candidates)
+print(head(mapped[, .(SNP, CHR, BP, A1, A2)], 10))
+```
+
+
+```{r debugging Hg38 mapping, include=FALSE}
+library(GenomicRanges)
+library(IRanges)
+library(GenomeInfoDb)
+library(SNPlocs.Hsapiens.dbSNP155.GRCh38)
+
+dbsnp <- SNPlocs.Hsapiens.dbSNP155.GRCh38
+available_seqnames <- GenomeInfoDb::seqlevels(dbsnp)
+
+chr <- as.character(candidates$CHR[1])
+seqname <- if (chr %in% available_seqnames) {
+  chr
+} else if (paste0("chr", chr) %in% available_seqnames) {
+  paste0("chr", chr)
+} else {
+  stop("Chromosome not found in dbSNP annotation: ", chr)
+}
+
+query <- GRanges(
+  seqnames = seqname,
+  ranges = IRanges(
+    start = as.integer(candidates$BP[1]),
+    end = as.integer(candidates$BP[1])
+  )
+)
+
+hits <- BSgenome::snpsByOverlaps(dbsnp, query)
+
+cat("Annotation chromosome style:", seqname, "\n")
+cat("Hits at this position:", length(hits), "\n")
+if (length(hits)) {
+  print(as.data.frame(hits))
+}
+```
+
 
 #### Summary
 - with relaxed threshold (5e-6), IVW and MW estimates with 8 SNPs find loneliness (PanUKB) -> depression (beta_IVW = 0.226, p = 0.03)
@@ -304,6 +647,60 @@ fwrite(tsmr_status, file.path(OUT_DIR, "twosamplemr_status.csv"))
 
 - **so overall, there is no evidence of causal associations between loneliness and triglycerides, and there is weak evidence of causal associations of loneliness -> T2D, and strong evidence of triglycerides -> T2D**
 
+#### Sensitivity with Stringent Threshold
+- 5e-8
+
+```{r run twosamplemr stringent, include=FALSE, cache=TRUE}
+
+# Aou loneliness -> Triglycerides
+tsmr_aou_tg_stringent <- run_tsmr_pair_stringent(traits$aou_lonely, traits$tg, "AoU loneliness", "Triglycerides")
+
+# Aou loneliness -> Depression
+tsmr_aou_dep_stringent <- run_tsmr_pair_stringent(traits$aou_lonely, traits$depression, "AoU loneliness", "Depression")
+
+# PanUKB Lonleiness -> Triglycerides
+tsmr_pan_tg_stringent <- run_tsmr_pair_stringent(traits$pan_lonely, traits$tg, "PanUKB loneliness", "Triglycerides")
+
+# PanUKB Loneliness -> Depression
+tsmr_pan_dep_stringent <- run_tsmr_pair_stringent(traits$pan_lonely, traits$depression, "PanUKB loneliness", "Depression")
+
+
+# Triglycericdes --> Depression
+tsmr_tg_dep_stringent <- run_tsmr_pair_stringent(traits$tg, traits$depression, "Triglycerides", "Depression")
+
+# Aou Loneliness -> T2D
+tsmr_aou_t2d_stringent <-  run_tsmr_pair_stringent(traits$aou_lonely, traits$t2d, "AoU loneliness", "Type 2 Diabetes")
+
+# PanUKB loneliness -> T2D
+tsmr_pan_t2d_stringent <-  run_tsmr_pair_stringent(traits$pan_lonely, traits$t2d, "PanUKB loneliness", "Type 2 Diabetes")
+
+# Triglyceriudes --> T2D
+tsmr_tg_t2d_stringent <-  run_tsmr_pair_stringent(traits$tg, traits$t2d, "Triglycerides", "Type 2 Diabetes")
+
+# bind results together
+tsmr_results_stringent <- rbindlist(list(
+  tsmr_aou_tg_stringent$mr, tsmr_aou_dep_stringent$mr, tsmr_pan_tg_stringent$mr,
+  tsmr_pan_dep_stringent$mr, tsmr_tg_dep_stringent$mr, tsmr_aou_t2d_stringent$mr, 
+  tsmr_pan_t2d_stringent$mr, tsmr_tg_t2d_stringent$mr
+), fill = TRUE)
+fwrite(tsmr_results_stringent, file.path(OUT_DIR, "twosamplemr_results_stringent.csv"))
+tsmr_status_stringent <- data.table(
+  analysis = c("AoU loneliness -> Triglycerides", 
+               "AoU loneliness -> Depression",
+               "PanUKB loneliness -> Triglycerides", 
+               "PanUKB loneliness -> Depression",
+               "Triglycerides -> Depression",
+               "AoU loneliness -> Type 2 Diabetes",
+               "PanUKB loneliness -> Type 2 Diabetes",
+               "Triglycerides -> Type 2 Diabetes"),
+  status = vapply(list(tsmr_aou_tg_stringent, tsmr_aou_dep_stringent, tsmr_pan_tg_stringent,
+                       tsmr_pan_dep_stringent, tsmr_tg_dep_stringent, tsmr_aou_t2d_stringent, 
+                       tsmr_pan_t2d_stringent, tsmr_tg_t2d_stringent ), `[[`, character(1), "status")
+)
+fwrite(tsmr_status_stringent, file.path(OUT_DIR, "twosamplemr_status_stringent.csv"))
+```
+
+
 
 #### Bidirectional MR
 - we tested loneliness -> triglycerides, loneliness -> depression/T2D and triglycerides -> depression/T2D
@@ -311,7 +708,7 @@ fwrite(tsmr_status, file.path(OUT_DIR, "twosamplemr_status.csv"))
 a) depression -> triglycerides, depression -> loneliness, triglycerides -> loneliness
 b) T2D -> triglycerides, T2D -> loneliness
 
-```{r}
+```{r run bidirectional mr pairs, include=FALSE, echo=FALSE, cache=TRUE}
 tsmr_tg_aou <- run_tsmr_pair(traits$tg, traits$aou_lonely, "Triglycerides", "AoU loneliness")
 tsmr_dep_aou <- run_tsmr_pair(traits$depression, traits$aou_lonely, "Depression", "AoU loneliness")
 tsmr_tg_pan <- run_tsmr_pair(traits$tg, traits$pan_lonely, "Triglycerides", "PanUKB loneliness")
@@ -334,7 +731,7 @@ tsmr_status_reverse <- data.table(
                "Triglycerides -> PanUKB loneliness", 
                "Depression -> PanUKB loneliness",
                "Depression -> Triglycerides",
-               "Type 2 Diabetes -> Aou loneliness",
+               "Type 2 Diabetes -> AoU loneliness",
                "Type 2 Diabetes -> PanUKB loneliness",
                "Type 2 Diabetes -> Triglycerides"),
   status = vapply(list(tsmr_tg_aou, tsmr_dep_aou, tsmr_tg_pan,
@@ -343,7 +740,7 @@ tsmr_status_reverse <- data.table(
 )
 fwrite(tsmr_status_reverse, file.path(OUT_DIR, "twosamplemr_status_reverse.csv"))
 ```
-#### Reversed MR Effects
+
 - evidence of Triglycerides -> PanUKB loneliness, consistent across IVW and WM (beta IVW = 0.078, p < 0.001, nSNPS = 485).
 - evidence of Depression -> PanUKB Loneliness, consistent across all MR methods (beta IVW = 0.477, p < 0.001, nSNPS = 131)
 - evidence of Depression -> Triglycerides -> consistent across IVW and WM (beta IVW = 0.156, p = 0.004, nSNPS = 60)
@@ -353,10 +750,53 @@ fwrite(tsmr_status_reverse, file.path(OUT_DIR, "twosamplemr_status_reverse.csv")
 
 **so it looks like there is more evidence of an effect of T2D -> Triglycerides -> Loneliness, suggesting that immune vulnerability may cause loneliness, partly mediated through immune biomarkers**
 
-### Effect Forest Plots
+#### Reversed, Stringent Results (5e-8)
+
+```{r reversed stringent MR, echo=FALSE, include=FALSE, cache=TRUE}
+tsmr_tg_aou_stringent <- run_tsmr_pair_stringent(traits$tg, traits$aou_lonely, "Triglycerides", "AoU loneliness")
+tsmr_dep_aou_stringent <- run_tsmr_pair_stringent(traits$depression, traits$aou_lonely, "Depression", "AoU loneliness")
+tsmr_tg_pan_stringent <- run_tsmr_pair_stringent(traits$tg, traits$pan_lonely, "Triglycerides", "PanUKB loneliness")
+tsmr_dep_pan_stringent <- run_tsmr_pair_stringent(traits$depression, traits$pan_lonely, "Depression", "PanUKB loneliness")
+tsmr_dep_tg_stringent <- run_tsmr_pair_stringent(traits$depression, traits$tg, "Depression", "Triglycerides")
+tsmr_t2d_aou_stringent <-  run_tsmr_pair_stringent(traits$t2d, traits$aou_lonely, "Type 2 Diabetes", "AoU loneliness")
+tsmr_t2d_pan_stringent <-  run_tsmr_pair_stringent(traits$t2d, traits$pan_lonely, "Type 2 Diabetes", "PanUKB loneliness")
+tsmr_t2d_tg_stringent <-  run_tsmr_pair_stringent(traits$t2d, traits$tg, "Type 2 Diabetes", "Triglycerides")
 
 
-```{r forest plot}
+tsmr_results_reverse_stringent <- rbindlist(list(
+  tsmr_tg_aou_stringent$mr, tsmr_dep_aou_stringent$mr, tsmr_tg_pan_stringent$mr,
+  tsmr_dep_pan_stringent$mr, tsmr_dep_tg_stringent$mr, tsmr_t2d_aou_stringent$mr, 
+  tsmr_t2d_pan_stringent$mr, tsmr_t2d_tg_stringent$mr
+), fill = TRUE)
+fwrite(tsmr_results_reverse_stringent, file.path(OUT_DIR, "twosamplemr_results_reverse_stringent.csv"))
+tsmr_status_reverse_stringent <- data.table(
+  analysis = c("Triglycerides -> loneliness", 
+               "Depression -> AoU loneliness",
+               "Triglycerides -> PanUKB loneliness", 
+               "Depression -> PanUKB loneliness",
+               "Depression -> Triglycerides",
+               "Type 2 Diabetes -> AoU loneliness",
+               "Type 2 Diabetes -> PanUKB loneliness",
+               "Type 2 Diabetes -> Triglycerides"),
+  status = vapply(list(tsmr_tg_aou_stringent, tsmr_dep_aou_stringent, tsmr_tg_pan_stringent,
+                       tsmr_dep_pan_stringent, tsmr_dep_tg_stringent, tsmr_t2d_aou_stringent, 
+                       tsmr_t2d_pan_stringent, tsmr_t2d_tg_stringent ), `[[`, character(1), "status")
+)
+fwrite(tsmr_status_reverse_stringent, file.path(OUT_DIR, "twosamplemr_status_reverse_stringent.csv"))
+```
+
+```{r}
+saveRDS(
+  tsmr_pairs_stringent,
+  file.path(OUT_DIR, "tsmr_pairs_stringent.rds")
+)
+
+```
+
+#### Effect Forest Plots (Relaxed)
+
+
+```{r forest plot, echo=FALSE}
 library(data.table)
 library(ggplot2)
 
@@ -368,6 +808,12 @@ plot_data <- rbindlist(
   fill = TRUE
 )
 
+# Exclude AoU loneliness sensitivity comparisons.
+plot_data <- plot_data[
+  !grepl("AoU", exposure, ignore.case = TRUE) &
+    !grepl("AoU", outcome, ignore.case = TRUE)
+]
+
 plot_data <- plot_data[
   is.finite(b) & is.finite(se) & se >= 0
 ]
@@ -378,9 +824,9 @@ plot_data[, `:=`(
   analysis = paste(exposure, "\u2192", outcome)
 )]
 
-plot_data <- plot_data[
-  !grepl("egger|wald ratio", method, ignore.case = TRUE)
-]
+#plot_data <- plot_data[
+#  !grepl("egger|wald ratio", method, ignore.case = TRUE)
+#]
 
 
 # Keep rows grouped by direction and exposure/outcome.
@@ -418,51 +864,994 @@ p_mr_forest <- ggplot(
 p_mr_forest
 ```
 - bidirectional loneliness <-> depression effects
+- bidirectional T2D <-> triglycerides relationship
+- some evidence of triglycerides -> loneliness 
+- some evidence of depression -> Triglycerides
 
-### MRlap sensitivity analyses
+triglycerides -> loneliness
+triglycerides -> T2D
 
-MRlap also accepts data frames with signed `BETA`/`SE` (and sample size), so the AoU summary statistics are converted into the same format above. This runs cross-trait LDSC and the overlap/weak-instrument/winner’s-curse correction for each pair.
+#### Effect Forest Plots (Stringent)
+```{r forest plot stringent, echo=FALSE}
+library(data.table)
+library(ggplot2)
 
-```{r mrlap}
-run_mrlap_pair <- function(exposure, outcome, exposure_name, outcome_name) {
-  MRlap::MRlap(
-    exposure = as.data.frame(exposure), exposure_name = exposure_name,
-    outcome = as.data.frame(outcome), outcome_name = outcome_name,
-    ld = LD_DIR, hm3 = HM3_FILE,
-    MR_threshold = 5e-8, MR_pruning_dist = 500, MR_pruning_LD = 0.001,
-    MR_plink = PLINK_BIN, MR_bfile = LD_BFILE,
-    save_logfiles = TRUE
-  )
-}
-
-mrlap_results <- list(
-  aou_to_tg = run_mrlap_pair(traits$aou_lonely, traits$tg, "AoU loneliness", "Triglycerides"),
-  aou_to_dep = run_mrlap_pair(traits$aou_lonely, traits$depression, "AoU loneliness", "Depression"),
-  panukb_to_tg = run_mrlap_pair(traits$pan_lonely, traits$tg, "PanUKB loneliness", "Triglycerides"),
-  panukb_to_dep = run_mrlap_pair(traits$pan_lonely, traits$depression, "PanUKB loneliness", "Depression"),
-  tg_to_dep = run_mrlap_pair(traits$tg, traits$depression, "Triglycerides", "Depression")
+plot_data <- rbindlist(
+  list(
+    as.data.table(tsmr_results_stringent)[, direction := "Forward"],
+    as.data.table(tsmr_results_reverse_stringent)[, direction := "Reverse"]
+  ),
+  fill = TRUE
 )
 
-summarise_mrlap <- function(result, exposure, outcome) {
-  r <- result$MRcorrection
-  data.table(
-    exposure = exposure, outcome = outcome, n_instruments = r$m_IVs,
-    observed_effect = r$observed_effect, observed_se = r$observed_effect_se,
-    observed_p = r$observed_effect_p, corrected_effect = r$corrected_effect,
-    corrected_se = r$corrected_effect_se, corrected_p = r$corrected_effect_p,
-    p_observed_vs_corrected = r$p_difference
+# Exclude AoU loneliness sensitivity comparisons.
+plot_data <- plot_data[
+  !grepl("AoU", exposure, ignore.case = TRUE) &
+    !grepl("AoU", outcome, ignore.case = TRUE)
+]
+
+plot_data <- plot_data[
+  is.finite(b) & is.finite(se) & se >= 0
+]
+
+plot_data[, `:=`(
+  ci_low = b - 1.96 * se,
+  ci_high = b + 1.96 * se,
+  analysis = paste(exposure, "\u2192", outcome)
+)]
+
+#plot_data <- plot_data[
+#  !grepl("egger|wald ratio", method, ignore.case = TRUE)
+#]
+
+
+# Keep rows grouped by direction and exposure/outcome.
+analysis_order <- unique(plot_data$analysis)
+plot_data[, analysis := factor(analysis, levels = rev(analysis_order))]
+
+p_mr_forest_stringent <- ggplot(
+  plot_data,
+  aes(x = b, y = analysis, color = method)
+) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey55") +
+  geom_errorbarh(
+    aes(xmin = ci_low, xmax = ci_high),
+    height = 0.18,
+    position = position_dodge(width = 0.65)
+  ) +
+  geom_point(
+    size = 2,
+    position = position_dodge(width = 0.65)
+  ) +
+  labs(
+    x = "MR effect estimate (b), with approximate 95% CI",
+    y = NULL,
+    color = "MR method",
+    title = "TwoSampleMR Bidirectional Analyses",
+    subtitle = "Based on 5e-8 exposure SNPs"
+  ) +
+  theme_bw(base_size = 12) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    axis.line.y = element_blank(),
+    legend.position = "right"
+  )
+
+p_mr_forest_stringent
+```
+
+### MR Sensitivity Analyses
+
+```{r mr-sensitivity, include=FALSE, cache=TRUE}
+# Collect the existing pairwise results. Each completed object contains its SNP-level harmonized data in $harmonised.
+tsmr_pairs <- list(
+  aou_to_tg = tsmr_aou_tg,
+  aou_to_dep = tsmr_aou_dep,
+  aou_to_t2d = tsmr_aou_t2d,
+  panukb_to_tg = tsmr_pan_tg,
+  panukb_to_dep = tsmr_pan_dep,
+  panukb_to_t2d = tsmr_pan_t2d,
+  tg_to_dep = tsmr_tg_dep,
+  tg_to_t2d = tsmr_tg_t2d,
+  tg_to_aou = tsmr_tg_aou,
+  tg_to_panukb = tsmr_tg_pan,
+  dep_to_aou = tsmr_dep_aou,
+  dep_to_panukb = tsmr_dep_pan,
+  dep_to_tg = tsmr_dep_tg,
+  t2d_to_aou = tsmr_t2d_aou,
+  t2d_to_panukb = tsmr_t2d_pan,
+  t2d_to_tg = tsmr_t2d_tg
+)
+
+tsmr_pairs_stringent <- list(
+  aou_to_tg_stringent  = tsmr_aou_tg_stringent ,
+  aou_to_dep_stringent  = tsmr_aou_dep_stringent ,
+  aou_to_t2d_stringent  = tsmr_aou_t2d_stringent ,
+  panukb_to_tg_stringent  = tsmr_pan_tg_stringent ,
+  panukb_to_dep_stringent  = tsmr_pan_dep_stringent ,
+  panukb_to_t2d_stringent  = tsmr_pan_t2d_stringent ,
+  tg_to_dep_stringent  = tsmr_tg_dep_stringent ,
+  tg_to_t2d_stringent  = tsmr_tg_t2d_stringent ,
+  tg_to_aou_stringent  = tsmr_tg_aou_stringent ,
+  tg_to_panukb_stringent  = tsmr_tg_pan_stringent ,
+  dep_to_aou_stringent  = tsmr_dep_aou_stringent ,
+  dep_to_panukb_stringent  = tsmr_dep_pan_stringent ,
+  dep_to_tg_stringent  = tsmr_dep_tg_stringent ,
+  t2d_to_aou_stringent  = tsmr_t2d_aou_stringent ,
+  t2d_to_panukb_stringent  = tsmr_t2d_pan_stringent ,
+  t2d_to_tg_stringent  = tsmr_t2d_tg_stringent 
+)
+
+# Continuous-trait pairs are suitable candidates for Steiger checks.
+# Depression and T2D excluded because they are binary traits.
+steiger_pairs <- c(
+  "aou_to_tg", "panukb_to_tg",
+  "tg_to_aou", "tg_to_panukb"
+)
+
+steiger_pairs_stringent <- c(
+  "aou_to_tg_stringent", "panukb_to_tg_stringent",
+  "tg_to_aou_stringent", "tg_to_panukb_stringent"
+)
+
+safe_test <- function(fun, dat, comparison, ...) {
+  tryCatch({
+    result <- data.table::as.data.table(fun(dat, ...))
+    if (nrow(result)) result[, comparison := comparison]
+    result
+  }, error = function(e) {
+    data.table::data.table(
+      comparison = comparison,
+      error = conditionMessage(e)
+    )
+  })
+}
+
+run_pair_sensitivity <- function(result, comparison) {
+  if (is.null(result$harmonised) || !nrow(result$harmonised)) {
+    empty <- data.table::data.table(
+      comparison = comparison,
+      error = "No harmonized SNP data available"
+    )
+    return(list(
+      strength = empty,
+      estimates = empty,
+      heterogeneity = empty,
+      egger_intercept = empty,
+      leave_one_out = empty,
+      single_snp = empty,
+      steiger = empty
+    ))
+  }
+
+  # Harmonized variants retained by run_tsmr_pair().
+  dat <- as.data.frame(result$harmonised)
+  n_snps <- nrow(dat)
+
+  # Approximate per-variant instrument F statistics: (beta / SE)^2.
+  strength <- data.table::data.table(comparison = comparison, n_snps = n_snps)
+  if (all(c("beta.exposure", "se.exposure") %in% names(dat))) {
+    f_stat <- (dat$beta.exposure / dat$se.exposure)^2
+    f_stat <- f_stat[is.finite(f_stat)]
+
+    strength[, `:=`(
+      mean_F = if (length(f_stat)) mean(f_stat) else NA_real_,
+      min_F = if (length(f_stat)) min(f_stat) else NA_real_,
+      n_F_below_10 = sum(f_stat < 10)
+    )]
+  } else {
+    strength[, error := "Missing beta.exposure or se.exposure"]
+  }
+
+  # Compare IVW with robust estimators and retain MR-Egger as a sensitivity estimate even if you choose not to show it in the main forest plot.
+  methods <- c(
+    "mr_ivw",
+    "mr_weighted_median",
+    "mr_weighted_mode",
+    "mr_egger_regression"
+  )
+
+  estimates <- data.table::rbindlist(
+    lapply(methods, function(method) {
+      safe_test(
+        TwoSampleMR::mr,
+        dat,
+        comparison,
+        method_list = method
+      )
+    }),
+    fill = TRUE
+  )
+
+  if (n_snps >= 2) {
+    heterogeneity <- safe_test(
+      TwoSampleMR::mr_heterogeneity,
+      dat,
+      comparison,
+      method_list = c("mr_ivw", "mr_egger_regression")
+    )
+  } else {
+    heterogeneity <- data.table::data.table(
+      comparison = comparison,
+      error = "At least two SNPs are needed for heterogeneity tests"
+    )
+  }
+
+  if (n_snps >= 3) {
+    egger_intercept <- safe_test(
+      TwoSampleMR::mr_pleiotropy_test,
+      dat,
+      comparison
+    )
+  } else {
+    egger_intercept <- data.table::data.table(
+      comparison = comparison,
+      error = "At least three SNPs are needed for the Egger intercept test"
+    )
+  }
+
+  if (n_snps >= 2) {
+    leave_one_out <- safe_test(
+      TwoSampleMR::mr_leaveoneout,
+      dat,
+      comparison
+    )
+  } else {
+    leave_one_out <- data.table::data.table(
+      comparison = comparison,
+      error = "At least two SNPs are needed for leave-one-out analysis"
+    )
+  }
+
+  single_snp <- safe_test(
+    TwoSampleMR::mr_singlesnp,
+    dat,
+    comparison
+  )
+
+  # For these loneliness/triglyceride pairs, TwoSampleMR will calculate approximate correlations if the harmonized data lacks r.exposure/r.outcome.
+  if (comparison %in% steiger_pairs_stringent) {
+    steiger <- safe_test(
+      TwoSampleMR::directionality_test,
+      dat,
+      comparison
+    )
+  } else {
+    steiger <- data.table::data.table(
+      comparison = comparison,
+      note = "Not run: binary-trait pairs are excluded from this Steiger pass"
+    )
+  }
+
+  list(
+    strength = strength,
+    estimates = estimates,
+    heterogeneity = heterogeneity,
+    egger_intercept = egger_intercept,
+    leave_one_out = leave_one_out,
+    single_snp = single_snp,
+    steiger = steiger
   )
 }
 
-mrlap_table <- rbindlist(list(
-  summarise_mrlap(mrlap_results$aou_to_tg, "AoU loneliness", "Triglycerides"),
-  summarise_mrlap(mrlap_results$aou_to_dep, "AoU loneliness", "Depression"),
-  summarise_mrlap(mrlap_results$panukb_to_tg, "PanUKB loneliness", "Triglycerides"),
-  summarise_mrlap(mrlap_results$panukb_to_dep, "PanUKB loneliness", "Depression"),
-  summarise_mrlap(mrlap_results$tg_to_dep, "Triglycerides", "Depression")
-), fill = TRUE)
+### sensitivity results 5e-6
+sensitivity_results <- lapply(names(tsmr_pairs), function(comparison) {
+  run_pair_sensitivity(tsmr_pairs[[comparison]], comparison)
+})
+names(sensitivity_results) <- names(tsmr_pairs)
+combine_sensitivity <- function(field) {
+  data.table::rbindlist(
+    lapply(sensitivity_results, `[[`, field),
+    fill = TRUE
+  )
+}
 
-fwrite(mrlap_table, file.path(OUT_DIR, "mrlap_results.csv"))
-saveRDS(mrlap_results, file.path(OUT_DIR, "mrlap_full_results.rds"))
-mrlap_table
+### sensitivity results 5e-8
+sensitivity_results_stringent <- lapply(names(tsmr_pairs_stringent), function(comparison) {
+  run_pair_sensitivity(tsmr_pairs_stringent[[comparison]], comparison)
+})
+
+names(sensitivity_results_stringent) <- names(tsmr_pairs_stringent)
+combine_sensitivity_stringent <- function(field) {
+  data.table::rbindlist(
+    lapply(sensitivity_results_stringent, `[[`, field),
+    fill = TRUE
+  )
+}
+
+#relaxed
+instrument_strength <- combine_sensitivity("strength")
+sensitivity_estimates <- combine_sensitivity("estimates")
+heterogeneity_results <- combine_sensitivity("heterogeneity")
+egger_intercepts <- combine_sensitivity("egger_intercept")
+leave_one_out_results <- combine_sensitivity("leave_one_out")
+single_snp_results <- combine_sensitivity("single_snp")
+steiger_results <- combine_sensitivity("steiger")
+
+data.table::fwrite(instrument_strength,
+                   file.path(OUT_DIR, "mr_instrument_strength.csv"))
+data.table::fwrite(sensitivity_estimates,
+                   file.path(OUT_DIR, "mr_sensitivity_estimates.csv"))
+data.table::fwrite(heterogeneity_results,
+                   file.path(OUT_DIR, "mr_heterogeneity.csv"))
+data.table::fwrite(egger_intercepts,
+                   file.path(OUT_DIR, "mr_egger_intercepts.csv"))
+data.table::fwrite(leave_one_out_results,
+                   file.path(OUT_DIR, "mr_leave_one_out.csv"))
+data.table::fwrite(single_snp_results,
+                   file.path(OUT_DIR, "mr_single_snp.csv"))
+data.table::fwrite(steiger_results,
+                   file.path(OUT_DIR, "mr_steiger_continuous_pairs.csv"))
+
+saveRDS(
+  sensitivity_results,
+  file.path(OUT_DIR, "mr_sensitivity_full_results.rds")
+)
+
+
+#stringent
+instrument_strength_stringent <- combine_sensitivity_stringent("strength")
+sensitivity_estimates_stringent <- combine_sensitivity_stringent("estimates")
+heterogeneity_results_stringent <- combine_sensitivity_stringent("heterogeneity")
+egger_intercepts_stringent <- combine_sensitivity_stringent("egger_intercept")
+leave_one_out_results_stringent <- combine_sensitivity_stringent("leave_one_out")
+single_snp_results_stringent <- combine_sensitivity_stringent("single_snp")
+steiger_results_stringent <- combine_sensitivity_stringent("steiger")
+
+data.table::fwrite(instrument_strength_stringent,
+                   file.path(OUT_DIR, "mr_instrument_strength_stringent.csv"))
+data.table::fwrite(sensitivity_estimates_stringent,
+                   file.path(OUT_DIR, "mr_sensitivity_estimates_stringent.csv"))
+data.table::fwrite(heterogeneity_results_stringent,
+                   file.path(OUT_DIR, "mr_heterogeneity_stringent.csv"))
+data.table::fwrite(egger_intercepts_stringent,
+                   file.path(OUT_DIR, "mr_egger_intercepts_stringent.csv"))
+data.table::fwrite(leave_one_out_results_stringent,
+                   file.path(OUT_DIR, "mr_leave_one_out_stringent.csv"))
+data.table::fwrite(single_snp_results_stringent,
+                   file.path(OUT_DIR, "mr_single_snp_stringent.csv"))
+data.table::fwrite(steiger_results_stringent,
+                   file.path(OUT_DIR, "mr_steiger_continuous_pairs_stringent.csv"))
+
+saveRDS(
+  sensitivity_results_stringent,
+  file.path(OUT_DIR, "mr_sensitivity_full_results_stringent.rds")
+)
+
+
+# Preview the two main diagnostic tables in the knitted notebook.
+print("-----RELAXED-----")
+heterogeneity_results
+egger_intercepts
+
+
+# stringent
+print("------STRINGENT------")
+heterogeneity_results_stringent
+egger_intercepts_stringent
 ```
+- all comparisons show significant heterogentiy (Cochran's Q)
+
+- significant egger intercepts for: 
+  - loneliness (PanUKB) -> depression
+  - triglycerides -> depression
+  - triglycerides -> type 2 diabetes
+  - triglycerides -> panUKB loneliness
+  - type 2 diabetes -> panUKB loneliness
+  - type 2 diabetes -> triglycerides
+  
+  
+- at stringent threshold:
+  - dep -> PanUKB
+  - dep -> tg
+  - T2D -> tg
+  - PanUKB lone -> TG
+  - PanUKB -> T2D
+  - TG -> T2D
+
+#### Re-Importing Data
+
+```{r reimport data, echo=FALSE}
+
+sensitivity_results <- readRDS("/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/mrlap_results/mr_sensitivity_full_results.rds")
+
+combine_sensitivity <- function(field) {
+  data.table::rbindlist(
+    lapply(sensitivity_results, `[[`, field),
+    fill = TRUE
+  )
+}
+
+instrument_strength <- combine_sensitivity("strength")
+sensitivity_estimates <- combine_sensitivity("estimates")
+heterogeneity_results <- combine_sensitivity("heterogeneity")
+egger_intercepts <- combine_sensitivity("egger_intercept")
+leave_one_out_results <- combine_sensitivity("leave_one_out")
+single_snp_results <- combine_sensitivity("single_snp")
+steiger_results <- combine_sensitivity("steiger")
+```
+
+#### Forest Plot with All Four Methods (Relaxed)
+
+```{r forest plot with all methods, echo=FALSE}
+library(data.table)
+library(ggplot2)
+
+plot_data <- copy(sensitivity_estimates)
+
+# Keep successful estimates and ensure the plotting columns are numeric.
+plot_data[, `:=`(
+  b = as.numeric(b),
+  se = as.numeric(se)
+)]
+
+plot_data <- plot_data[
+  !is.na(method) &
+    is.finite(b) &
+    is.finite(se) &
+    se >= 0
+]
+
+plot_data[, `:=`(
+  ci_low = b - 1.96 * se,
+  ci_high = b + 1.96 * se,
+  analysis = paste(exposure, "\u2192", outcome)
+)]
+
+# Display the four estimators in a consistent legend order.
+method_order <- c(
+  "Inverse variance weighted",
+  "Weighted median",
+  "Weighted mode",
+  "MR Egger"
+)
+
+plot_data[, method := factor(method, levels = method_order)]
+
+# Exclude AoU loneliness sensitivity comparisons.
+plot_data <- plot_data[
+  !grepl("AoU", exposure, ignore.case = TRUE) &
+    !grepl("AoU", outcome, ignore.case = TRUE)
+]
+
+# Keep comparisons in the order they appear in the saved results.
+analysis_order <- unique(plot_data$analysis)
+plot_data[, analysis := factor(analysis, levels = rev(analysis_order))]
+
+dodge <- position_dodge(width = 0.7)
+
+p_mr_sensitivity <- ggplot(
+  plot_data,
+  aes(x = b, y = analysis, color = method)
+) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey55") +
+  geom_errorbarh(
+    aes(xmin = ci_low, xmax = ci_high),
+    height = 0.18,
+    position = dodge
+  ) +
+  geom_point(
+    size = 1.8,
+    position = dodge
+  ) +
+  scale_color_brewer(palette = "Dark2", drop = TRUE) +
+  labs(
+    x = "MR effect estimate (b), with approximate 95% CI",
+    y = NULL,
+    color = "MR method",
+    title = "Two-sample MR sensitivity estimates",
+    subtitle = "All comparisons, at SNP threshold 5e-6"
+  ) +
+  theme_bw(base_size = 11) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    axis.line.y = element_blank(),
+    legend.position = "right"
+  )
+
+p_mr_sensitivity
+```
+- including sensitivity analyses, strongest evidence for:
+  - Depression -> PanUKB Loneliness
+  - Type 2 Diabetes -> Triglycerides
+  - Triglycerides -> PanUKB Loneliness (to a degree, except MR Egger)
+  - Depression -> Triglycerides also except for MR Egger which has a wide confidence interval
+  
+  
+#### Forest Plot with All Four Methods (Stringent)
+
+```{r forest plot with all methods, echo=FALSE}
+library(data.table)
+library(ggplot2)
+
+plot_data <- copy(sensitivity_estimates_stringent)
+
+# Keep successful estimates and ensure the plotting columns are numeric.
+plot_data[, `:=`(
+  b = as.numeric(b),
+  se = as.numeric(se)
+)]
+
+plot_data <- plot_data[
+  !is.na(method) &
+    is.finite(b) &
+    is.finite(se) &
+    se >= 0
+]
+
+plot_data[, `:=`(
+  ci_low = b - 1.96 * se,
+  ci_high = b + 1.96 * se,
+  analysis = paste(exposure, "\u2192", outcome)
+)]
+
+# Display the four estimators in a consistent legend order.
+method_order <- c(
+  "Inverse variance weighted",
+  "Weighted median",
+  "Weighted mode",
+  "MR Egger"
+)
+
+plot_data[, method := factor(method, levels = method_order)]
+
+# Exclude AoU loneliness sensitivity comparisons.
+plot_data <- plot_data[
+  !grepl("AoU", exposure, ignore.case = TRUE) &
+    !grepl("AoU", outcome, ignore.case = TRUE)
+]
+
+# Keep comparisons in the order they appear in the saved results.
+analysis_order <- unique(plot_data$analysis)
+plot_data[, analysis := factor(analysis, levels = rev(analysis_order))]
+
+dodge <- position_dodge(width = 0.7)
+
+p_mr_sensitivity_stringent <- ggplot(
+  plot_data,
+  aes(x = b, y = analysis, color = method)
+) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey55") +
+  geom_errorbarh(
+    aes(xmin = ci_low, xmax = ci_high),
+    height = 0.18,
+    position = dodge
+  ) +
+  geom_point(
+    size = 1.8,
+    position = dodge
+  ) +
+  scale_color_brewer(palette = "Dark2", drop = TRUE) +
+  labs(
+    x = "MR effect estimate (b), with approximate 95% CI",
+    y = NULL,
+    color = "MR method",
+    title = "Two-sample MR sensitivity estimates",
+    subtitle = "All comparisons, at 5e-8 SNP exposure threshold"
+  ) +
+  theme_bw(base_size = 11) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    axis.line.y = element_blank(),
+    legend.position = "right"
+  )
+
+p_mr_sensitivity_stringent
+```
+
+#### Separate plot for AoU sensitivity analyses
+- since confidence intervals are super wide
+
+```{r sensitivity analyses AoU, echo=FALSE}
+aou_plot_data <- copy(sensitivity_estimates)
+
+aou_plot_data[, `:=`(
+  b = as.numeric(b),
+  se = as.numeric(se)
+)]
+
+# Keep forward AoU loneliness comparisons; exclude AoU as the outcome.
+aou_plot_data <- aou_plot_data[
+  grepl("aou", comparison, ignore.case = TRUE) &
+    !grepl("to_aou", comparison, ignore.case = TRUE) &
+    !is.na(method) &
+    is.finite(b) &
+    is.finite(se) &
+    se >= 0
+]
+
+if (nrow(aou_plot_data) == 0L) {
+  stop("No forward AoU loneliness estimates found. Check comparison values.")
+}
+
+aou_plot_data[, `:=`(
+  ci_low = b - 1.96 * se,
+  ci_high = b + 1.96 * se
+)]
+
+aou_labels <- c(
+  aou_to_tg = "AoU loneliness \u2192 Triglycerides",
+  aou_to_dep = "AoU loneliness \u2192 Depression",
+  aou_to_t2d = "AoU loneliness \u2192 Type 2 Diabetes"
+)
+
+aou_plot_data[, analysis := unname(aou_labels[comparison])]
+aou_plot_data[is.na(analysis), analysis := comparison]
+
+aou_order <- unique(aou_plot_data$analysis)
+aou_plot_data[, analysis := factor(analysis, levels = rev(aou_order))]
+
+aou_methods <- unique(as.character(aou_plot_data$method))
+aou_plot_data[, method := factor(method, levels = aou_methods)]
+
+p_mr_aou <- ggplot(
+  aou_plot_data,
+  aes(x = b, y = analysis, color = method)
+) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey55") +
+  geom_errorbar(
+    aes(xmin = ci_low, xmax = ci_high),
+    orientation = "y",
+    width = 0.2,
+    position = position_dodge(width = 0.65)
+  ) +
+  geom_point(
+    size = 2.3,
+    position = position_dodge(width = 0.65)
+  ) +
+  scale_color_brewer(palette = "Dark2", drop = TRUE) +
+  labs(
+    x = "MR effect estimate (b), with approximate 95% CI",
+    y = NULL,
+    color = "MR method",
+    title = "AoU loneliness MR sensitivity estimates",
+    subtitle = "At 5e-6 Exposure SNP Threshold"
+  ) +
+  theme_bw(base_size = 11) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    axis.line.y = element_blank(),
+    legend.position = "right"
+  )
+
+p_mr_aou
+```
+- for AoU, most consistent evidence of an effect from loneliness to depression
+
+```{r sensitivity analyses AoU stringent, echo=FALSE}
+aou_plot_data <- copy(sensitivity_estimates_stringent)
+
+aou_plot_data[, `:=`(
+  b = as.numeric(b),
+  se = as.numeric(se)
+)]
+
+# Keep forward AoU loneliness comparisons; exclude AoU as the outcome.
+aou_plot_data <- aou_plot_data[
+  grepl("aou", comparison, ignore.case = TRUE) &
+   !grepl("to_aou", comparison, ignore.case = TRUE) &
+    !is.na(method) &
+    is.finite(b) &
+    is.finite(se) &
+    se >= 0
+]
+
+if (nrow(aou_plot_data) == 0L) {
+  stop("No forward AoU loneliness estimates found. Check comparison values.")
+}
+
+aou_plot_data[, `:=`(
+  ci_low = b - 1.96 * se,
+  ci_high = b + 1.96 * se
+)]
+
+aou_labels <- c(
+  aou_to_tg_stringent = "AoU loneliness \u2192 Triglycerides",
+  aou_to_dep_stringent = "AoU loneliness \u2192 Depression",
+  aou_to_t2d_stringent = "AoU loneliness \u2192 Type 2 Diabetes",
+  tg_to_aou_stringent = "Triglycerides \u2192 AoU loneliness",
+  dep_to_aou_stringent = "Depression \u2192 AoU loneliness",
+  t2d_to_aou_stringent = "Type 2 Diabetes \u2192 AoU loneliness"
+
+)
+
+aou_plot_data[, analysis := unname(aou_labels[comparison])]
+aou_plot_data[is.na(analysis), analysis := comparison]
+
+aou_order <- unique(aou_plot_data$analysis)
+aou_plot_data[, analysis := factor(analysis, levels = rev(aou_order))]
+
+aou_methods <- unique(as.character(aou_plot_data$method))
+aou_plot_data[, method := factor(method, levels = aou_methods)]
+
+p_mr_aou_stringent <- ggplot(
+  aou_plot_data,
+  aes(x = b, y = analysis, color = method)
+) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey55") +
+  geom_errorbar(
+    aes(xmin = ci_low, xmax = ci_high),
+    orientation = "y",
+    width = 0.2,
+    position = position_dodge(width = 0.65)
+  ) +
+  geom_point(
+    size = 2.3,
+    position = position_dodge(width = 0.65)
+  ) +
+  scale_color_brewer(palette = "Dark2", drop = TRUE) +
+  labs(
+    x = "MR effect estimate (b), with approximate 95% CI",
+    y = NULL,
+    color = "MR method",
+    title = "AoU loneliness MR sensitivity estimates",
+    subtitle = "At 5e-8 Exposure SNP Threshold"
+  ) +
+  theme_bw(base_size = 11) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    axis.line.y = element_blank(),
+    legend.position = "right"
+  )
+
+p_mr_aou_stringent
+```
+
+
+```{r instrument-strength}
+instrument_strength 
+```
+- all instrumnents of adequate strength (no F < 10)
+
+#### Looking at SNP effects for strongest pairs
+1) Loneliness -> Depression
+2) Depression -> Loneliness
+3) Triglycerides -> T2D
+4) T2D -> Triglycerides 
+5) Triglycerides -> Loneliness
+
+- possible weak causal chain from T2D -> Triglycerides -> loneliness? 
+
+#### Single SNP Results
+
+```{r loneliness to depression}
+# Loneliness to Depression (PanUKB)
+dep_single_snp <- subset(
+  single_snp_results_stringent,
+  comparison == "panukb_to_dep_stringent"
+)
+
+mr_forest_plot(dep_single_snp)
+
+# Loneliness to Depression (PanUKB)
+dep_single_snp_rel <- subset(
+  single_snp_results,
+  comparison == "panukb_to_dep"
+)
+
+mr_forest_plot(dep_single_snp_rel)
+```
+- with a relaxed threshold, it looks more apparent that there is some kind of effect of loneliness on depression
+
+```{r depression to loneliness}
+dep_single_snp <- subset(
+  single_snp_results_stringent,
+  comparison == "dep_to_panukb_stringent"
+)
+
+mr_forest_plot(dep_single_snp)
+
+dep_single_snp_rel <- subset(
+  single_snp_results,
+  comparison == "dep_to_panukb"
+)
+
+mr_forest_plot(dep_single_snp_rel)
+```
+- much more of an effect of Depression on PanUKB loneliness (and way more SNPs significant at thresholds)
+```{r tg to T2D}
+tg_single_snp <- subset(
+  single_snp_results_stringent,
+  comparison == "tg_to_t2d_stringent"
+)
+
+mr_forest_plot(tg_single_snp)
+
+tg_single_snp_rel <- subset(
+  single_snp_results,
+  comparison == "tg_to_t2d"
+)
+
+mr_forest_plot(tg_single_snp_rel)
+```
+- some evidence of tg to t2d, but so many SNPS
+
+```{r T2D to tg}
+t2d_single_snp <- subset(
+  single_snp_results_stringent,
+  comparison == "t2d_to_tg_stringent"
+)
+
+mr_forest_plot(t2d_single_snp)
+
+t2d_single_snp_rel <- subset(
+  single_snp_results,
+  comparison == "t2d_to_tg"
+)
+
+mr_forest_plot(t2d_single_snp_rel)
+```
+- more convincing evidence of T2D -> Triglycerides 
+
+```{r tg to loneliness}
+lone_single_snp <- subset(
+  single_snp_results_stringent,
+  comparison == "tg_to_panukb_stringent"
+)
+
+mr_forest_plot(lone_single_snp)
+
+lone_single_snp_rel <- subset(
+  single_snp_results,
+  comparison == "tg_to_panukb"
+)
+
+mr_forest_plot(lone_single_snp_rel)
+```
+- basically zero
+
+#### Leave-one-out Plots
+
+```{r loneliness to depression loo}
+# Loneliness to Depression (PanUKB)
+dep_loo <- subset(
+  leave_one_out_results_stringent,
+  comparison == "panukb_to_dep_stringent"
+)
+
+mr_leaveoneout_plot(dep_loo)
+
+# Loneliness to Depression (PanUKB)
+dep_loo_rel <- subset(
+  leave_one_out_results,
+  comparison == "panukb_to_dep"
+)
+
+mr_leaveoneout_plot(dep_loo_rel)
+```
+- using loo for the stringent threshold, there is still evidence of an effect of Loneliness -> Depression
+- using loo for the relaxed threshold the effect also remains
+
+```{r dep to lone loo}
+dep_loo <- subset(
+  leave_one_out_results_stringent,
+  comparison == "dep_to_panukb_stringent"
+)
+
+mr_leaveoneout_plot(dep_loo)
+
+dep_loo_rel <- subset(
+  leave_one_out_results,
+  comparison == "dep_to_panukb"
+)
+
+mr_leaveoneout_plot(dep_loo_rel)
+```
+- for both, the effect of Dep -> Lone remains
+
+```{r tg to T2D loo}
+tg_loo <- subset(
+  leave_one_out_results_stringent,
+  comparison == "tg_to_t2d_stringent"
+)
+
+mr_leaveoneout_plot(tg_loo)
+
+tg_loo_rel <- subset(
+  leave_one_out_results,
+  comparison == "tg_to_t2d"
+)
+
+mr_leaveoneout_plot(tg_loo_rel)
+```
+- loo results still show triglycerides -> T2D significant
+
+```{r T2D to tg loo}
+tg_loo <- subset(
+  leave_one_out_results_stringent,
+  comparison == "t2d_to_tg_stringent"
+)
+
+mr_leaveoneout_plot(tg_loo)
+
+tg_loo_rel <- subset(
+  leave_one_out_results,
+  comparison == "t2d_to_tg"
+)
+
+mr_leaveoneout_plot(tg_loo_rel)
+```
+- T2D -> TG still significant
+
+```{r tg to lone loo}
+lone_loo <- subset(
+  leave_one_out_results_stringent,
+  comparison == "tg_to_panukb_stringent"
+)
+
+mr_leaveoneout_plot(lone_loo)
+
+lone_loo_rel <- subset(
+  leave_one_out_results,
+  comparison == "tg_to_panukb"
+)
+
+mr_leaveoneout_plot(lone_loo_rel)
+```
+- significant effects using loo, suggesting effects aren't being driven by single powerful SNPs
+
+#### MR-PRESSO
+
+```{r}
+library(MRPRESSO)
+```
+
+
+#### Checking MR Results Adjusting for horizontal pleiotropy
+
+```{r loneliness to depression, echo=FALSE}
+run_presso_pair <- function(hdat, nb_distribution = 10000, seed = 123) {
+  d <- as.data.frame(hdat)
+
+  required <- c("beta.exposure", "beta.outcome", "se.exposure", "se.outcome")
+  missing <- setdiff(required, names(d))
+  if (length(missing)) {
+    stop("Harmonized data are missing: ", paste(missing, collapse = ", "))
+  }
+
+  # Use the same SNPs retained for your main MR, if this flag is present.
+  if ("mr_keep" %in% names(d)) {
+    d <- d[d$mr_keep %in% TRUE, ]
+  }
+
+  d <- d[
+    is.finite(d$beta.exposure) &
+      is.finite(d$beta.outcome) &
+      is.finite(d$se.exposure) & d$se.exposure > 0 &
+      is.finite(d$se.outcome) & d$se.outcome > 0,
+  ]
+
+  if (nrow(d) < 4L) {
+    stop("MR-PRESSO needs at least 4 usable SNP instruments; found ", nrow(d))
+  }
+
+  # MR-PRESSO requires NbDistribution to exceed the number of instruments.
+  nb_distribution <- max(nb_distribution, nrow(d) + 1L)
+
+  MRPRESSO::mr_presso(
+    BetaOutcome = "beta.outcome",
+    BetaExposure = "beta.exposure",
+    SdOutcome = "se.outcome",
+    SdExposure = "se.exposure",
+    data = d,
+    OUTLIERtest = TRUE,
+    DISTORTIONtest = TRUE,
+    NbDistribution = nb_distribution,
+    SignifThreshold = 0.05,
+    seed = seed
+  )
+}
+
+#loneliness -> Depression
+presso_panukb_dep <- run_presso_pair(
+  tsmr_pairs_stringent[["panukb_to_dep_stringent"]]$harmonised
+)
+
+
+```
+
+```{r}
+presso_panukb_dep
+
+```
+

@@ -68,6 +68,7 @@ scripts/cluster_scripts/already_munged_ldsc
 scripts/cluster_scripts/finngen_cluster_scripts
 scripts/cluster_scripts/generic_ldsc_cluster
 scripts/Triglycerides.tsv
-"scripts/AoU loneliness.tsv"
+scripts/AoU loneliness.tsv
 
 
+scripts/AoU loneliness.tsv
