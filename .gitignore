@@ -48,6 +48,7 @@ slurm-*.out
 .Rproj.user/
 renv
 r_libs
+*.rds
 
 # Python
 __pycache__/
