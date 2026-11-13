@@ -6,6 +6,9 @@ This repository contains code and analysis workflows for a project investigating
 
 The project aims to characterize shared genetic architecture between loneliness-related traits and immune phenotypes, identify potential causal relationships, and evaluate biological pathways that may connect social and immune processes.
 
+## Quick Access to Results
+[GenomicSEM Mediation Analyses](https://ellenmartin11.github.io/immune-loneliness/scripts/8_gsem_loneliness.html)
+
 ## Research Questions
 
 The main questions include:
