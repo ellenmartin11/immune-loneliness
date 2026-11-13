@@ -9,17 +9,21 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE, message = TRUE, warning = TRUE)
 ```
 
-## Mendelian randomization for Loneliness -> Triglycerides, Loneliness -> Depression and Triglycerides -> Depression
+## Mendelian Randomisation Analyses (TwoSample)
+- All directions, but specifically:
+  - Loneliness <-> Triglycerides, Loneliness <-> Depression and Triglycerides <-> Depression
+  - Loneliness <-> T2D, Triglycerides <-> T2D
+  - Maybe as supplementary analyses Depression <-> T2D
 
-Primary analyses: PanUKB loneliness → triglycerides → depression. AoU loneliness is a sensitivity exposure. The pairwise analyses below estimate each link; they do not, by themselves, estimate a formal indirect/mediation effect.
+- AoU loneliness is a sensitivity exposure. The pairwise analyses below estimate each link; they do not, by themselves, estimate a formal indirect/mediation effect.
 
 Notes:
 - everything should be Hg38 build for coordinates, so make sure plink build is correct
-- 
 
-### Setup and paths
 
-```{r paths, echo=FALSE, cache=TRUE}
+#### Setup and paths
+
+```{r paths, include=FALSE}
 library(data.table)
 library(TwoSampleMR)
 library(ieugwasr)
@@ -27,6 +31,7 @@ library(MRlap)
 library(GenomicRanges)
 library(IRanges)
 library(SNPlocs.Hsapiens.dbSNP155.GRCh38)
+library(readr)
 
 
 PATH_AOU_LONELY <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/UCLA_loneliness_scale_eur.tsv"
@@ -60,13 +65,13 @@ if (!dir.exists(LD_DIR) || !file.exists(HM3_FILE))
   stop("LDSC LD-score directory or HapMap3 SNP list not found.")
 ```
 
-### Read and standardize summary statistics
+#### Read and standardize summary statistics
 
 The AoU file uses `CHROM`, `GENPOS`, `ID`, `ALLELE0`, `ALLELE1`, `N`, `TEST`, `BETA`, `SE`, and `LOG10P`. The additive (`ADD`) rows are retained; `ALLELE1` is treated as the effect allele for `BETA`, and `ALLELE0` as the other allele. Confirm that allele convention against the AoU export documentation before interpreting direction.
 
 Other files are expected to have the standardized columns `SNP`, `A1`, `A2`, `BETA`, `SE`, `P`, and `N` (with optional `CHR`, `BP`, `EAF`).
 
-```{r readers, include=FALSE, cache=TRUE}
+```{r readers, eval=FALSE, cache=TRUE, include=FALSE}
 read_aou <- function(path) {
   x <- fread(path)
   required <- c("CHROM", "GENPOS", "ID", "ALLELE0", "ALLELE1", "N",
@@ -134,7 +139,7 @@ traits <- list(
 vapply(traits, nrow, integer(1))
 ```
 
-### TwoSampleMR
+## TwoSampleMR
 - Note, this uses a reduced thrshold of 5e-6 
 - 5e-8 will be run as sensitivity analyses, but not many things survive
 
@@ -390,6 +395,12 @@ clump_exposure_stringent <- function(x, p_threshold = 5e-8) {
   kept
 }
 
+
+
+```
+
+
+```{r relaxed tsmr, eval=FALSE, include=FALSE}
 # relaxed 5e-6
 
 run_tsmr_pair <- function(exposure, outcome, exposure_name, outcome_name) {
@@ -506,12 +517,11 @@ run_tsmr_pair_stringent <- function(exposure, outcome, exposure_name, outcome_na
     pleiotropy = if (nrow(harm) >= 3) TwoSampleMR::mr_pleiotropy_test(harm) else NULL
   )
 }
-
 ```
 
 #### Relaxed Threshold Two-Sample MR
 - 5e-6
-```{r run twosamplemr, include=FALSE, cache=TRUE}
+```{r run twosamplemr, eval=FALSE, cache=TRUE, include=FALSE}
 
 # Aou loneliness -> Triglycerides
 tsmr_aou_tg <- run_tsmr_pair(traits$aou_lonely, traits$tg, "AoU loneliness", "Triglycerides")
@@ -565,7 +575,7 @@ fwrite(tsmr_status, file.path(OUT_DIR, "twosamplemr_status.csv"))
 #### Check Mapping Issues
 - with AoU Chr:BP specifically
 
-```{r mapping issues, echo=FALSE}
+```{r mapping issues, eval=FALSE, include=FALSE}
 library(data.table)
 
 # Apply the same significance threshold used by clump_exposure().
@@ -604,7 +614,7 @@ print(head(mapped[, .(SNP, CHR, BP, A1, A2)], 10))
 ```
 
 
-```{r debugging Hg38 mapping, include=FALSE}
+```{r debugging Hg38 mapping, eval=FALSE, include=FALSE}
 library(GenomicRanges)
 library(IRanges)
 library(GenomeInfoDb)
@@ -648,9 +658,9 @@ if (length(hits)) {
 - **so overall, there is no evidence of causal associations between loneliness and triglycerides, and there is weak evidence of causal associations of loneliness -> T2D, and strong evidence of triglycerides -> T2D**
 
 #### Sensitivity with Stringent Threshold
-- 5e-8
+- uses 5e-8
 
-```{r run twosamplemr stringent, include=FALSE, cache=TRUE}
+```{r run twosamplemr stringent, eval=FALSE, cache=TRUE, include=FALSE}
 
 # Aou loneliness -> Triglycerides
 tsmr_aou_tg_stringent <- run_tsmr_pair_stringent(traits$aou_lonely, traits$tg, "AoU loneliness", "Triglycerides")
@@ -708,7 +718,7 @@ fwrite(tsmr_status_stringent, file.path(OUT_DIR, "twosamplemr_status_stringent.c
 a) depression -> triglycerides, depression -> loneliness, triglycerides -> loneliness
 b) T2D -> triglycerides, T2D -> loneliness
 
-```{r run bidirectional mr pairs, include=FALSE, echo=FALSE, cache=TRUE}
+```{r run bidirectional mr pairs, eval=FALSE, cache=TRUE, include=FALSE}
 tsmr_tg_aou <- run_tsmr_pair(traits$tg, traits$aou_lonely, "Triglycerides", "AoU loneliness")
 tsmr_dep_aou <- run_tsmr_pair(traits$depression, traits$aou_lonely, "Depression", "AoU loneliness")
 tsmr_tg_pan <- run_tsmr_pair(traits$tg, traits$pan_lonely, "Triglycerides", "PanUKB loneliness")
@@ -752,7 +762,7 @@ fwrite(tsmr_status_reverse, file.path(OUT_DIR, "twosamplemr_status_reverse.csv")
 
 #### Reversed, Stringent Results (5e-8)
 
-```{r reversed stringent MR, echo=FALSE, include=FALSE, cache=TRUE}
+```{r reversed stringent MR, eval=FALSE, cache=TRUE, include=FALSE}
 tsmr_tg_aou_stringent <- run_tsmr_pair_stringent(traits$tg, traits$aou_lonely, "Triglycerides", "AoU loneliness")
 tsmr_dep_aou_stringent <- run_tsmr_pair_stringent(traits$depression, traits$aou_lonely, "Depression", "AoU loneliness")
 tsmr_tg_pan_stringent <- run_tsmr_pair_stringent(traits$tg, traits$pan_lonely, "Triglycerides", "PanUKB loneliness")
@@ -785,7 +795,7 @@ tsmr_status_reverse_stringent <- data.table(
 fwrite(tsmr_status_reverse_stringent, file.path(OUT_DIR, "twosamplemr_status_reverse_stringent.csv"))
 ```
 
-```{r}
+```{r saving stringent tsmr pairs, eval=FALSE, include=FALSE}
 saveRDS(
   tsmr_pairs_stringent,
   file.path(OUT_DIR, "tsmr_pairs_stringent.rds")
@@ -794,9 +804,9 @@ saveRDS(
 ```
 
 #### Effect Forest Plots (Relaxed)
+- check saved figures
 
-
-```{r forest plot, echo=FALSE}
+```{r forest plot, eval=FALSE, include=FALSE}
 library(data.table)
 library(ggplot2)
 
@@ -872,9 +882,11 @@ triglycerides -> loneliness
 triglycerides -> T2D
 
 #### Effect Forest Plots (Stringent)
-```{r forest plot stringent, echo=FALSE}
+```{r forest plot stringent, eval=FALSE, include=FALSE}
 library(data.table)
 library(ggplot2)
+
+
 
 plot_data <- rbindlist(
   list(
@@ -940,9 +952,9 @@ p_mr_forest_stringent <- ggplot(
 p_mr_forest_stringent
 ```
 
-### MR Sensitivity Analyses
+## MR Sensitivity Analyses
 
-```{r mr-sensitivity, include=FALSE, cache=TRUE}
+```{r mr-sensitivity, eval=FALSE, cache=TRUE, include=FALSE}
 # Collect the existing pairwise results. Each completed object contains its SNP-level harmonized data in $harmonised.
 tsmr_pairs <- list(
   aou_to_tg = tsmr_aou_tg,
@@ -1253,7 +1265,7 @@ egger_intercepts_stringent
 
 ```{r reimport data, echo=FALSE}
 
-sensitivity_results <- readRDS("/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/mrlap_results/mr_sensitivity_full_results.rds")
+sensitivity_results <- readRDS("/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/mr_sensitivity_full_results.rds")
 
 combine_sensitivity <- function(field) {
   data.table::rbindlist(
@@ -1269,11 +1281,32 @@ egger_intercepts <- combine_sensitivity("egger_intercept")
 leave_one_out_results <- combine_sensitivity("leave_one_out")
 single_snp_results <- combine_sensitivity("single_snp")
 steiger_results <- combine_sensitivity("steiger")
+
+# stringent
+
+sensitivity_results_stringent <- readRDS("/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/mr_sensitivity_full_results_stringent.rds")
+
+combine_sensitivity <- function(field) {
+  data.table::rbindlist(
+    lapply(sensitivity_results_stringent, `[[`, field),
+    fill = TRUE
+  )
+}
+
+sensitivity_estimates_stringent <- fread("/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/mr_sensitivity_estimates_stringent.csv")
+
+instrument_strength_stringent <- combine_sensitivity("strength")
+sensitivity_estimates_stringent <- combine_sensitivity("estimates")
+heterogeneity_results_stringent <- combine_sensitivity("heterogeneity")
+egger_intercepts_stringent <- combine_sensitivity("egger_intercept")
+leave_one_out_results_stringent <- combine_sensitivity("leave_one_out")
+single_snp_results_stringent <- combine_sensitivity("single_snp")
+steiger_results_stringent <- combine_sensitivity("steiger")
 ```
 
-#### Forest Plot with All Four Methods (Relaxed)
+### Forest Plot with All Four Methods (Relaxed Threshold)
 
-```{r forest plot with all methods, echo=FALSE}
+```{r forest plot with all methods relaxed, echo=FALSE}
 library(data.table)
 library(ggplot2)
 
@@ -1358,11 +1391,13 @@ p_mr_sensitivity
   - Depression -> Triglycerides also except for MR Egger which has a wide confidence interval
   
   
-#### Forest Plot with All Four Methods (Stringent)
+#### Forest Plot with All Four Methods (Stringent Threshold)
 
-```{r forest plot with all methods, echo=FALSE}
+```{r forest plot with all methods stringent, echo=FALSE}
 library(data.table)
 library(ggplot2)
+
+
 
 plot_data <- copy(sensitivity_estimates_stringent)
 
@@ -1598,7 +1633,7 @@ p_mr_aou_stringent
 ```
 
 
-```{r instrument-strength}
+```{r instrument-strength, eval=FALSE, include=FALSE}
 instrument_strength 
 ```
 - all instrumnents of adequate strength (no F < 10)
@@ -1614,7 +1649,7 @@ instrument_strength
 
 #### Single SNP Results
 
-```{r loneliness to depression}
+```{r loneliness to depression single snp, echo=TRUE}
 # Loneliness to Depression (PanUKB)
 dep_single_snp <- subset(
   single_snp_results_stringent,
@@ -1633,7 +1668,7 @@ mr_forest_plot(dep_single_snp_rel)
 ```
 - with a relaxed threshold, it looks more apparent that there is some kind of effect of loneliness on depression
 
-```{r depression to loneliness}
+```{r depression to loneliness, echo=TRUE}
 dep_single_snp <- subset(
   single_snp_results_stringent,
   comparison == "dep_to_panukb_stringent"
@@ -1649,7 +1684,7 @@ dep_single_snp_rel <- subset(
 mr_forest_plot(dep_single_snp_rel)
 ```
 - much more of an effect of Depression on PanUKB loneliness (and way more SNPs significant at thresholds)
-```{r tg to T2D}
+```{r tg to T2D, echo=TRUE}
 tg_single_snp <- subset(
   single_snp_results_stringent,
   comparison == "tg_to_t2d_stringent"
@@ -1666,7 +1701,7 @@ mr_forest_plot(tg_single_snp_rel)
 ```
 - some evidence of tg to t2d, but so many SNPS
 
-```{r T2D to tg}
+```{r T2D to tg, echo=TRUE}
 t2d_single_snp <- subset(
   single_snp_results_stringent,
   comparison == "t2d_to_tg_stringent"
@@ -1683,7 +1718,7 @@ mr_forest_plot(t2d_single_snp_rel)
 ```
 - more convincing evidence of T2D -> Triglycerides 
 
-```{r tg to loneliness}
+```{r tg to loneliness, echo=TRUE}
 lone_single_snp <- subset(
   single_snp_results_stringent,
   comparison == "tg_to_panukb_stringent"
@@ -1702,7 +1737,7 @@ mr_forest_plot(lone_single_snp_rel)
 
 #### Leave-one-out Plots
 
-```{r loneliness to depression loo}
+```{r loneliness to depression loo, echo=TRUE}
 # Loneliness to Depression (PanUKB)
 dep_loo <- subset(
   leave_one_out_results_stringent,
@@ -1722,7 +1757,7 @@ mr_leaveoneout_plot(dep_loo_rel)
 - using loo for the stringent threshold, there is still evidence of an effect of Loneliness -> Depression
 - using loo for the relaxed threshold the effect also remains
 
-```{r dep to lone loo}
+```{r dep to lone loo, echo=TRUE}
 dep_loo <- subset(
   leave_one_out_results_stringent,
   comparison == "dep_to_panukb_stringent"
@@ -1739,7 +1774,7 @@ mr_leaveoneout_plot(dep_loo_rel)
 ```
 - for both, the effect of Dep -> Lone remains
 
-```{r tg to T2D loo}
+```{r tg to T2D loo, echo=TRUE}
 tg_loo <- subset(
   leave_one_out_results_stringent,
   comparison == "tg_to_t2d_stringent"
@@ -1756,7 +1791,7 @@ mr_leaveoneout_plot(tg_loo_rel)
 ```
 - loo results still show triglycerides -> T2D significant
 
-```{r T2D to tg loo}
+```{r T2D to tg loo, echo=TRUE}
 tg_loo <- subset(
   leave_one_out_results_stringent,
   comparison == "t2d_to_tg_stringent"
@@ -1773,7 +1808,7 @@ mr_leaveoneout_plot(tg_loo_rel)
 ```
 - T2D -> TG still significant
 
-```{r tg to lone loo}
+```{r tg to lone loo, echo=TRUE}
 lone_loo <- subset(
   leave_one_out_results_stringent,
   comparison == "tg_to_panukb_stringent"
@@ -1794,12 +1829,13 @@ mr_leaveoneout_plot(lone_loo_rel)
 
 ```{r}
 library(MRPRESSO)
+tsmr_pairs_stringent <- readRDS("/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/tsmr_pairs_stringent.rds")
 ```
 
 
 #### Checking MR Results Adjusting for horizontal pleiotropy
 
-```{r loneliness to depression, echo=FALSE}
+```{r loneliness to depression, include=FALSE}
 run_presso_pair <- function(hdat, nb_distribution = 10000, seed = 123) {
   d <- as.data.frame(hdat)
 
@@ -1820,6 +1856,9 @@ run_presso_pair <- function(hdat, nb_distribution = 10000, seed = 123) {
       is.finite(d$se.exposure) & d$se.exposure > 0 &
       is.finite(d$se.outcome) & d$se.outcome > 0,
   ]
+  
+  rownames(d) <- d$SNP
+  print(nrow(d))
 
   if (nrow(d) < 4L) {
     stop("MR-PRESSO needs at least 4 usable SNP instruments; found ", nrow(d))
@@ -1842,16 +1881,127 @@ run_presso_pair <- function(hdat, nb_distribution = 10000, seed = 123) {
   )
 }
 
+
+
+```
+
+```{r presso lone to dep, eval=FALSE, include=FALSE}
 #loneliness -> Depression
 presso_panukb_dep <- run_presso_pair(
   tsmr_pairs_stringent[["panukb_to_dep_stringent"]]$harmonised
 )
 
+```
+
+```{r saving presso lone dep, eval=FALSE, include=FALSE}
+saveRDS(
+  presso_panukb_dep,
+  file.path(OUT_DIR, "presso_panukb_dep_stringent.rds")
+)
 
 ```
 
-```{r}
-presso_panukb_dep
+#### Plotting MR PRESSO Results (Lone -> Depression)
+```{r plotting presso lone dep, echo=FALSE}
+library(data.table)
+library(ggplot2)
+
+presso_panukb_dep <- readRDS("/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/presso_panukb_dep_stringent.rds")
+
+# Example result object from run_presso_pair()
+outlier_table <- as.data.table(
+  presso_panukb_dep[["MR-PRESSO results"]][["Outlier Test"]],
+  keep.rownames = "SNP"
+)
+
+# MR-PRESSO can report very small p-values as strings such as "<0.001".
+# Use the numeric bound for plotting and retain the original text for labels.
+outlier_table[, p_text := as.character(Pvalue)]
+outlier_table[, p_num := as.numeric(sub("^<", "", p_text))]
+outlier_table[, significant := grepl("^<", p_text) | p_num < 0.05]
+outlier_table[, neg_log10_p := -log10(p_num)]
+
+ggplot(
+  outlier_table,
+  aes(x = neg_log10_p, y = reorder(SNP, neg_log10_p), color = significant)
+) +
+  geom_vline(xintercept = -log10(0.05), linetype = "dashed", color = "grey55") +
+  geom_point(size = 2) +
+  scale_color_manual(
+    values = c(`FALSE` = "grey50", `TRUE` = "#D55E00"),
+    labels = c(`FALSE` = "Not flagged", `TRUE` = "MR-PRESSO outlier"),
+    name = NULL
+  ) +
+  labs(
+    x = expression(-log[10]("Bonferroni-corrected outlier p-value")),
+    y = "SNP",
+    title = "MR-PRESSO outlier test: Loneliness → Depression"
+  ) +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank())
+```
+- one SNP is flagged as an outlier according to MR-PRESSO, but this outlier did not significantly distort the overall IVW estimate, so
+
+```{r PRESSO T2D TG, eval=FALSE, include=FALSE}
+#T2D -> Triglycerides
+presso_t2d_tg <- run_presso_pair(
+  tsmr_pairs_stringent[["t2d_to_tg_stringent"]]$harmonised
+)
+
+#takes forever to run so immediately save an interrim thing
+```
+
+```{r saving t2d tg presso, eval=FALSE, include=FALSE}
+
+saveRDS(
+  presso_t2d_tg,
+  file.path(OUT_DIR, "presso_t2d_tg_stringent.rds")
+)
+
+```
+
+
+```{r plot for t2d to tg, echo=FALSE}
+
+presso_t2d_tg <- readRDS("/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/presso_t2d_tg_stringent.rds")
+outlier_table <- as.data.table(
+  presso_t2d_tg[["MR-PRESSO results"]][["Outlier Test"]],
+  keep.rownames = "SNP"
+)
+
+outlier_table[, p_text := as.character(Pvalue)]
+outlier_table[, p_num := as.numeric(sub("^<", "", p_text))]
+outlier_table[, significant := grepl("^<", p_text) | p_num < 0.05]
+outlier_table[, neg_log10_p := -log10(p_num)]
+
+ggplot(
+  outlier_table,
+  aes(x = neg_log10_p, y = reorder(SNP, neg_log10_p), color = significant)
+) +
+  geom_vline(xintercept = -log10(0.05), linetype = "dashed", color = "grey55") +
+  geom_point(size = 2) +
+  scale_color_manual(
+    values = c(`FALSE` = "grey50", `TRUE` = "#D55E00"),
+    labels = c(`FALSE` = "Not flagged", `TRUE` = "MR-PRESSO outlier"),
+    name = NULL
+  ) +
+  labs(
+    x = expression(-log[10]("Bonferroni-corrected outlier p-value")),
+    y = "SNP",
+    title = "MR-PRESSO outlier test: Type 2 Diabetes → Triglycerides"
+  ) +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank())
+```
+- several MR-PRESSO outliers, but distortion test also n.s.
+
+```{r TG to T2D PRESSO}
+# lowering to 1000 for this run
+presso_tg_t2d <- run_presso_pair(
+  tsmr_pairs_stringent[["tg_to_t2d_stringent"]]$harmonised
+)
+
+# genuinely takes for ever, next one I submit will be via a compute node. 
 
 ```
 

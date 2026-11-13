@@ -5,32 +5,45 @@ output: html_notebook
 
 ## MR CAUSE
 - CAUSE is used to address issues of correlated pleiotropy and is more robust
+- note, we need loo@2.9.0 for this to work without compatibility issues
 
-```{r }
+```{r load libraries and directories, include=FALSE}
 library(readr)
 library(cause)
 library(dplyr)
+library(ieugwasr)
+
+PLINK_BIN <- "/vast/palmer/apps/avx2/software/PLINK/1.9b_6.21-x86_64/plink"
+LD_BFILE <- "/gpfs/gibbs/pi/polimanti/LDSC_1000G/g1000_eur"
+
 
 ```
 
 #### Checking Loneliness <-> Triglycerides
 
-```{r loading loneliness and tg}
+```{r loading loneliness and tg, eval=FALSE, cache=TRUE, include=FALSE}
 PATH_PAN_LONELY <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/005_Loneliness_isolation_PanUKB_clean.tsv.gz"
 loneliness <- read_tsv(PATH_PAN_LONELY)
 
 PATH_TG <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/metal_ivw/Triglycerides_METAL_combined.tsv.gz"
 tg <- read_tsv(PATH_TG)
 
+PATH_T2D <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/006_Type_2_Diabetes_clean.tsv.gz"
+t2d <- read_tsv(PATH_T2D)
+
 colnames(loneliness)
 colnames(tg)
+colnames(t2d)
 ```
-```{r checking colnames}
+
+
+```{r checking colnames, eval=FALSE, include=FALSE}
 head(loneliness)
 head(tg)
 
 ```
 
+#### Format Loneliness to Triglycerides
 ```{r harmonizing and formatting}
 lone_tg <- cause::gwas_merge(
   loneliness,
@@ -41,11 +54,225 @@ lone_tg <- cause::gwas_merge(
   A1_cols = c("A1", "A1"),
   A2_cols = c("A2", "A2")
 )
+
+saveRDS(lone_tg, "/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/lone_tg.rds")
 ```
 
-```{r}
+```{r check formatting, echo=FALSE}
+head(lone_tg)
+
+names(lone_tg)
+
+# compute p-values
+lone_tg$p1 <- 2 * pnorm(
+  -abs(lone_tg$beta_hat_1 / lone_tg$seb1)
+)
+
+head(lone_tg)
+```
+
+#### Estimate Parameters for MR CAUSE
+
+
+```{r MR CAUSE parameter estimation, eval=FALSE, include=FALSE}
 set.seed(100)
 varlist <- with(lone_tg, sample(snp, size=1000000, replace=FALSE))
 params <- est_cause_params(lone_tg, varlist)
+
+saveRDS(
+  params,
+  file.path(OUT_DIR, "CAUSE_params_lone_tg.rds")
+)
 ```
+
+```{r show params, eval=FALSE, include=FALSE}
+names(params)
+params$rho
+```
+
+```{r reload parameter estiamtes, echo=FALSE}
+
+params <- readRDS("/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/CAUSE_params_lone_tg.rds")
+
+
+```
+
+
+#### Clumping
+- uses the tutorial threshold value because CAUSE can take weaker instruments because of how it models a shared factor
+
+
+```{r clumping threshold, eval=FALSE, cache=TRUE, include=FALSE}
+lone_tg <- readRDS("/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/lone_tg.rds")
+
+ld_input <- data.frame(
+  rsid = lone_tg$snp,
+  pval = lone_tg$p1,
+  id = "loneliness"
+)
+
+ld_input <- ld_input[
+  !is.na(ld_input$rsid) &
+    !duplicated(ld_input$rsid) &
+    is.finite(ld_input$pval),
+]
+
+clumped <- ieugwasr::ld_clump(
+  dat = ld_input,
+  clump_kb = 10000,
+  clump_r2 = 0.01,
+  clump_p = 1e-3,
+  bfile = LD_BFILE,
+  plink_bin = PLINK_BIN
+)
+
+top_vars <- clumped$rsid
+```
+
+```{r check vars}
+length(top_vars)
+head(top_vars)
+```
+
+#### CAUSE FIT
+
+```{r cause fit, eval=FALSE, include=FALSE}
+cause_lone_tg <- cause::cause(
+  X = lone_tg,
+  variants = top_vars,
+  param_ests = params,
+  pval_thresh = 1e-3
+)
+
+
+```
+
+```{r show results lone tg, echo=TRUE}
+summary(cause_lone_tg)
+cause_lone_tg$elpd
+plot(cause_lone_tg)
+summary(cause_lone_tg, ci_size = 0.95)
+```
+
+
+- causal model from Loneliness -> Tg is a better fit (p = 0.0015)
+- delta_elpd = −6.2, SE = 2.1, z = −3.0, p = 0.0015
+- effect size of gamma = 0.06 (0.03, 0.09)
+- estimated that 26% of the SNPs are acting through the shared factor
+- visually, we can see that gamma is concentrated above zero (which is the causal effect estimate)
+- we can see that eta (the parameter reflecting how much SNP effects are acting through shared factor) are distributed around zero
+
+
+#### TG to Loneliness?
+```{r harmonising tg lone, eval=FALSE, include=FALSE}
+tg_lone <- cause::gwas_merge(
+  tg,
+  loneliness,
+  snp_name_cols = c("SNP", "SNP"),
+  beta_hat_cols = c("BETA", "BETA"),
+  se_cols = c("SE", "SE"),
+  A1_cols = c("A1", "A1"),
+  A2_cols = c("A2", "A2")
+)
+
+tg_lone$p1 <- 2 * pnorm(
+  -abs(tg_lone$beta_hat_1 / tg_lone$seb1)
+)
+
+
+saveRDS(tg_lone, "/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/tg_lone.rds")
+
+
+```
+
+```{r parans for tg lone, eval=FALSE, include=FALSE}
+set.seed(100)
+varlist <- with(tg_lone, sample(snp, size=1000000, replace=FALSE))
+params <- est_cause_params(tg_lone, varlist)
+
+saveRDS(
+  params,
+  file.path("/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/CAUSE_params_tg_lone.rds")
+)
+```
+
+```{r clumping tg lone, eval=FALSE, include=FALSE}
+ld_input <- data.frame(
+  rsid = tg_lone$snp,
+  pval = tg_lone$p1,
+  id = "loneliness"
+)
+
+ld_input <- ld_input[
+  !is.na(ld_input$rsid) &
+    !duplicated(ld_input$rsid) &
+    is.finite(ld_input$pval),
+]
+
+clumped <- ieugwasr::ld_clump(
+  dat = ld_input,
+  clump_kb = 10000,
+  clump_r2 = 0.01,
+  clump_p = 1e-3,
+  bfile = LD_BFILE,
+  plink_bin = PLINK_BIN
+)
+
+top_vars <- clumped$rsid
+```
+
+```{r CAUSE fit tg lone, eval=FALSE, include=FALSE}
+cause_tg_lone <- cause::cause(
+  X = tg_lone,
+  variants = top_vars,
+  param_ests = params,
+  pval_thresh = 1e-3
+)
+
+
+```
+
+```{r results tg lone, echo=TRUE}
+summary(cause_tg_lone)
+cause_tg_lone$elpd
+plot(cause_tg_lone)
+summary(cause_tg_lone, ci_size = 0.95)
+
+saveRDS(cause_tg_lone, "/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/cause_tg_lone.rds")
+
+```
+- also finds causal model from Tg -> loneliness is a better fit than the shared model (delta elpd= -4.05,	se = 1.70, z =	-2.38, p = 0.0086)
+- Gamma causal model = 0.08 [0.05, 0.11], which is a stronger estimated causal effect than for Loneliness -> Tg
+
+#### T2D to Triglycerides
+
+```{r T2D to triglycerides harmonization}
+t2d_tg <- cause::gwas_merge(
+  t2d,
+  tg,
+  snp_name_cols = c("SNP", "SNP"),
+  beta_hat_cols = c("BETA", "BETA"),
+  se_cols = c("SE", "SE"),
+  A1_cols = c("A1", "A1"),
+  A2_cols = c("A2", "A2")
+)
+
+t2d_tg$p1 <- 2 * pnorm(
+  -abs(t2d_tg$beta_hat_1 / t2d_tg$seb1)
+)
+
+
+saveRDS(t2d_tg, "/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/cause/t2d_tg.rds")
+```
+```{r params t2d to tg}
+set.seed(100)
+varlist <- with(t2d_tg, sample(snp, size=1000000, replace=FALSE))
+params <- est_cause_params(t2d_tg, varlist)
+
+saveRDS(
+  params,
+  file.path("/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/cause/CAUSE_params_t2d_tg.rds")
+)
+```
+
 
