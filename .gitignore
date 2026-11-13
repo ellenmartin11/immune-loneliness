@@ -44,11 +44,14 @@ slurm-*.out
 
 # R
 .Rhistory
-.RData
+*.RData
 .Rproj.user/
 renv
 r_libs
 *.rds
+*.rdb
+
+
 
 # Python
 __pycache__/
