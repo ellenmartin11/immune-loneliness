@@ -39,6 +39,7 @@ PATH_PAN_LONELY <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/pri
 PATH_TG <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/metal_ivw/Triglycerides_METAL_combined.tsv.gz"
 PATH_DEPRESSION <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/012_Depression_PGC_clean.tsv.gz"
 PATH_T2D <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/006_Type_2_Diabetes_clean.tsv.gz"
+PATH_LONELINESS_METAL <- "/gpfs/gibbs/scratch/polimanti/ejm96/metal_ldsc_pipeline/loneliness_metal/Loneliness_PanUKB_AoU_METAL_combined.tsv.gz"
 
 PLINK_BIN <- "/vast/palmer/apps/avx2/software/PLINK/1.9b_6.21-x86_64/plink"
 LD_BFILE <- "/gpfs/gibbs/pi/polimanti/LDSC_1000G/g1000_eur"
@@ -52,7 +53,8 @@ input_paths <- c(
   PanUKB_loneliness = PATH_PAN_LONELY,
   Triglycerides = PATH_TG,
   Depression = PATH_DEPRESSION,
-  T2D = PATH_T2D
+  T2D = PATH_T2D,
+  METAL_loneliness = PATH_LONELINESS_METAL
 )
 path_check <- data.table(dataset = names(input_paths), path = unname(input_paths),
                          exists = file.exists(input_paths))
@@ -96,23 +98,41 @@ read_aou <- function(path) {
 }
 
 validate_sumstats <- function(x, label) {
-  req <- c("SNP", "A1", "A2", "BETA", "SE", "P", "N")
+  req <- c("SNP", "A1", "A2", "BETA", "SE", "P")
   missing <- setdiff(req, names(x))
-  if (length(missing)) stop(label, " missing standardized fields: ", paste(missing, collapse = ", "))
+  if (length(missing)) {
+    stop(label, " missing standardized fields: ", paste(missing, collapse = ", "))
+  }
+
+  if (!"N" %in% names(x)) {
+    x[, N := NA_real_]
+  }
+
   x[, `:=`(
-    SNP = as.character(SNP), A1 = toupper(as.character(A1)),
-    A2 = toupper(as.character(A2)), BETA = as.numeric(BETA),
-    SE = as.numeric(SE), P = as.numeric(P), N = as.numeric(N)
+    SNP = as.character(SNP),
+    A1 = toupper(as.character(A1)),
+    A2 = toupper(as.character(A2)),
+    BETA = as.numeric(BETA),
+    SE = as.numeric(SE),
+    P = as.numeric(P),
+    N = as.numeric(N)
   )]
-  x <- x[!is.na(SNP) & nzchar(SNP) &
-           A1 %chin% c("A", "C", "G", "T") & A2 %chin% c("A", "C", "G", "T") &
-           is.finite(BETA) & is.finite(SE) & SE > 0 &
-           is.finite(P) & P > 0 & P <= 1 & is.finite(N) & N > 0]
+
+  x <- x[
+    !is.na(SNP) & nzchar(SNP) &
+      A1 %chin% c("A", "C", "G", "T") &
+      A2 %chin% c("A", "C", "G", "T") &
+      is.finite(BETA) &
+      is.finite(SE) & SE > 0 &
+      is.finite(P) & P > 0 & P <= 1
+  ]
+
   dup <- x[, .N, by = SNP][N > 1, SNP]
   if (length(dup)) {
     message(label, ": removing all records for ", length(dup), " duplicated SNP IDs")
     x <- x[!SNP %chin% dup]
   }
+
   if (!nrow(x)) stop("No usable variants remain for ", label)
   x
 }
@@ -130,12 +150,14 @@ read_trait <- function(path, label, is_aou = FALSE) {
 }
 
 traits <- list(
-  aou_lonely = read_trait(PATH_AOU_LONELY, "AoU loneliness", TRUE),
-  pan_lonely = read_trait(PATH_PAN_LONELY, "PanUKB loneliness"),
+  #aou_lonely = read_trait(PATH_AOU_LONELY, "AoU loneliness", TRUE),
+  #pan_lonely = read_trait(PATH_PAN_LONELY, "PanUKB loneliness"),
   tg = read_trait(PATH_TG, "Triglycerides"),
   depression = read_trait(PATH_DEPRESSION, "Depression"),
-  t2d = read_trait(PATH_T2D, "Type 2 Diabetes")
+  t2d = read_trait(PATH_T2D, "Type 2 Diabetes"),
+  metal_lonely = read_trait(PATH_LONELINESS_METAL, "METAL loneliness")
 )
+
 vapply(traits, nrow, integer(1))
 ```
 
@@ -154,6 +176,34 @@ to_tsmr <- function(x, type, trait_name) {
     pval_col = "P", phenotype_col = "trait_name"
   )
 }
+
+# helper function for CHR:BP mapping 
+add_chr_bp_from_snp <- function(x) {
+  x <- data.table::copy(data.table::as.data.table(x))
+  ids <- as.character(x$SNP)
+
+  # Parse IDs such as chr1:11063 or chr1:11063:A:G.
+  matches <- regmatches(
+    ids,
+    regexec("^(?:chr)?([^:]+):([0-9]+)(?::.*)?$", ids,
+            perl = TRUE, ignore.case = TRUE)
+  )
+  parsed <- lengths(matches) >= 3L
+
+  if (!"CHR" %in% names(x)) x[, CHR := NA_character_]
+  if (!"BP" %in% names(x)) x[, BP := NA_integer_]
+
+  if (any(parsed)) {
+    x$CHR[parsed] <- vapply(matches[parsed], `[[`, character(1), 2L)
+    x$BP[parsed] <- as.integer(
+      vapply(matches[parsed], `[[`, character(1), 3L)
+    )
+  }
+
+  message("Parsed coordinates from SNP IDs: ", sum(parsed), " of ", length(ids))
+  x
+}
+
 
 # helper function to specifically convert AoU CHR:BP to rsIDs
 map_aou_to_rsid <- function(x) {
@@ -404,39 +454,99 @@ clump_exposure_stringent <- function(x, p_threshold = 5e-8) {
 # relaxed 5e-6
 
 run_tsmr_pair <- function(exposure, outcome, exposure_name, outcome_name) {
-  exp_iv <- clump_exposure(exposure)
+  exp_iv <- data.table::as.data.table(clump_exposure(exposure))
+  outcome <- data.table::as.data.table(outcome)
+
+  if (!"SNP" %in% names(exp_iv)) {
+    stop("Clumped exposure is missing an SNP column.")
+  }
+  if (!"SNP" %in% names(outcome)) {
+    stop(outcome_name, " data is missing an SNP column.")
+  }
+
   exp_dat <- to_tsmr(exp_iv, "exposure", exposure_name)
 
-  # First match IDs directly. If they differ, match variants by coordinates
-  # and the unordered allele pair (requires the same genome build).
-  outcome_rows <- outcome[SNP %chin% exp_iv$SNP]
-  if (!nrow(outcome_rows) && all(c("CHR", "BP") %in% names(exp_iv)) &&
-      all(c("CHR", "BP") %in% names(outcome))) {
-    e <- copy(exp_iv)
-    o <- copy(outcome)
-    e[, `:=`(match_chr = sub("^chr", "", as.character(CHR), ignore.case = TRUE),
-             match_bp = as.numeric(BP),
-             allele_lo = pmin(A1, A2), allele_hi = pmax(A1, A2))]
-    o[, `:=`(match_chr = sub("^chr", "", as.character(CHR), ignore.case = TRUE),
-             match_bp = as.numeric(BP),
-             allele_lo = pmin(A1, A2), allele_hi = pmax(A1, A2))]
-    outcome_rows <- merge(
-      o, unique(e[, .(match_chr, match_bp, allele_lo, allele_hi, SNP)]),
-      by = c("match_chr", "match_bp", "allele_lo", "allele_hi"),
-      all = FALSE, allow.cartesian = FALSE, suffixes = c("", "_exposure")
+  # First match directly by SNP ID.
+  direct_rows <- outcome[
+    which(outcome[["SNP"]] %chin% exp_iv[["SNP"]])
+  ]
+
+  # Also try matching by chromosome, position, and unordered alleles.
+  # This runs even when some variants matched directly by SNP ID.
+  coordinate_rows <- data.table::data.table()
+
+  coordinate_cols <- c("CHR", "BP", "A1", "A2")
+  if (
+    all(coordinate_cols %in% names(exp_iv)) &&
+    all(coordinate_cols %in% names(outcome))
+  ) {
+    e <- data.table::copy(exp_iv)
+    o <- data.table::copy(outcome)
+
+    e[, `:=`(
+      match_chr = toupper(sub("^chr", "", as.character(CHR), ignore.case = TRUE)),
+      match_bp = suppressWarnings(as.numeric(BP)),
+      allele_lo = pmin(toupper(as.character(A1)), toupper(as.character(A2))),
+      allele_hi = pmax(toupper(as.character(A1)), toupper(as.character(A2))),
+      exposure_snp = as.character(SNP)
+    )]
+
+    o[, `:=`(
+      match_chr = toupper(sub("^chr", "", as.character(CHR), ignore.case = TRUE)),
+      match_bp = suppressWarnings(as.numeric(BP)),
+      allele_lo = pmin(toupper(as.character(A1)), toupper(as.character(A2))),
+      allele_hi = pmax(toupper(as.character(A1)), toupper(as.character(A2)))
+    )]
+
+    exposure_keys <- unique(
+      e[, .(match_chr, match_bp, allele_lo, allele_hi, exposure_snp)]
     )
-    if (nrow(outcome_rows)) {
-      outcome_rows[, SNP := SNP_exposure]
-      outcome_rows[, SNP_exposure := NULL]
+
+    coordinate_rows <- merge(
+      o,
+      exposure_keys,
+      by = c("match_chr", "match_bp", "allele_lo", "allele_hi"),
+      all = FALSE,
+      allow.cartesian = FALSE
+    )
+
+    if (nrow(coordinate_rows)) {
+      # Use the exposure SNP ID so TwoSampleMR can pair the records.
+      coordinate_rows[, SNP := exposure_snp]
+      coordinate_rows[, c(
+        "match_chr", "match_bp", "allele_lo", "allele_hi", "exposure_snp"
+      ) := NULL]
     }
   }
+
+  # Avoid including a variant twice if it matched by both methods.
+  if (nrow(direct_rows) && nrow(coordinate_rows)) {
+    coordinate_rows <- coordinate_rows[
+      !SNP %chin% direct_rows[["SNP"]]
+    ]
+  }
+
+  outcome_rows <- data.table::rbindlist(
+    list(direct_rows, coordinate_rows),
+    fill = TRUE
+  )
+  outcome_rows <- unique(outcome_rows, by = "SNP")
+
+  message(
+    "Outcome matches for ", exposure_name, " -> ", outcome_name,
+    ": ", nrow(direct_rows), " by SNP ID; ",
+    nrow(coordinate_rows), " additional by coordinates and alleles."
+  )
+
   if (!nrow(outcome_rows)) {
-    warning("Skipping ", exposure_name, " -> ", outcome_name,
-            ": none of the retained exposure instruments is present in the outcome by SNP ID or exact chromosome/position/alleles.")
+    warning(
+      "Skipping ", exposure_name, " -> ", outcome_name,
+      ": no instruments matched by SNP ID or by chromosome, position, and alleles."
+    )
     return(list(
       status = "skipped: no instrument overlap",
-      harmonised = data.table(),
-      mr = data.table(),
+      harmonised = data.table::data.table(),
+      mr = data.table::data.table(),
       heterogeneity = NULL,
       pleiotropy = NULL
     ))
@@ -445,56 +555,133 @@ run_tsmr_pair <- function(exposure, outcome, exposure_name, outcome_name) {
   out_dat <- to_tsmr(outcome_rows, "outcome", outcome_name)
   harm <- TwoSampleMR::harmonise_data(exp_dat, out_dat, action = 3)
   harm <- subset(harm, mr_keep)
-  if (!nrow(harm)) stop("No harmonized instruments for ", exposure_name, " -> ", outcome_name)
+
+  message(
+    "Harmonized instruments retained for ", exposure_name, " -> ",
+    outcome_name, ": ", nrow(harm)
+  )
+
+  if (!nrow(harm)) {
+    stop("No harmonized instruments for ", exposure_name, " -> ", outcome_name)
+  }
+
   methods <- if (nrow(harm) == 1L) {
     "mr_wald_ratio"
   } else {
     c("mr_ivw", "mr_weighted_median", "mr_egger_regression")
   }
+
   list(
     status = "completed",
     harmonised = harm,
     mr = TwoSampleMR::mr(harm, method_list = methods),
-    heterogeneity = if (nrow(harm) >= 2) TwoSampleMR::mr_heterogeneity(harm) else NULL,
-    pleiotropy = if (nrow(harm) >= 3) TwoSampleMR::mr_pleiotropy_test(harm) else NULL
+    heterogeneity = if (nrow(harm) >= 2L) {
+      TwoSampleMR::mr_heterogeneity(harm)
+    } else {
+      NULL
+    },
+    pleiotropy = if (nrow(harm) >= 3L) {
+      TwoSampleMR::mr_pleiotropy_test(harm)
+    } else {
+      NULL
+    }
   )
 }
 
-# stringent 5e-8
 run_tsmr_pair_stringent <- function(exposure, outcome, exposure_name, outcome_name) {
-  exp_iv <- clump_exposure_stringent(exposure)
+  exp_iv <- data.table::as.data.table(clump_exposure_stringent(exposure))
+  outcome <- data.table::as.data.table(outcome)
+
+  if (!"SNP" %in% names(exp_iv)) {
+    stop("Clumped exposure is missing an SNP column.")
+  }
+  if (!"SNP" %in% names(outcome)) {
+    stop(outcome_name, " data is missing an SNP column.")
+  }
+
   exp_dat <- to_tsmr(exp_iv, "exposure", exposure_name)
 
-  # First match IDs directly. If they differ, match variants by coordinates
-  # and the unordered allele pair (requires the same genome build).
-  outcome_rows <- outcome[SNP %chin% exp_iv$SNP]
-  if (!nrow(outcome_rows) && all(c("CHR", "BP") %in% names(exp_iv)) &&
-      all(c("CHR", "BP") %in% names(outcome))) {
-    e <- copy(exp_iv)
-    o <- copy(outcome)
-    e[, `:=`(match_chr = sub("^chr", "", as.character(CHR), ignore.case = TRUE),
-             match_bp = as.numeric(BP),
-             allele_lo = pmin(A1, A2), allele_hi = pmax(A1, A2))]
-    o[, `:=`(match_chr = sub("^chr", "", as.character(CHR), ignore.case = TRUE),
-             match_bp = as.numeric(BP),
-             allele_lo = pmin(A1, A2), allele_hi = pmax(A1, A2))]
-    outcome_rows <- merge(
-      o, unique(e[, .(match_chr, match_bp, allele_lo, allele_hi, SNP)]),
-      by = c("match_chr", "match_bp", "allele_lo", "allele_hi"),
-      all = FALSE, allow.cartesian = FALSE, suffixes = c("", "_exposure")
+  # First match directly by SNP ID.
+  direct_rows <- outcome[
+    which(outcome[["SNP"]] %chin% exp_iv[["SNP"]])
+  ]
+
+  # Also try matching by chromosome, position, and unordered alleles.
+  # This runs even when some variants matched directly by SNP ID.
+  coordinate_rows <- data.table::data.table()
+
+  coordinate_cols <- c("CHR", "BP", "A1", "A2")
+  if (
+    all(coordinate_cols %in% names(exp_iv)) &&
+    all(coordinate_cols %in% names(outcome))
+  ) {
+    e <- data.table::copy(exp_iv)
+    o <- data.table::copy(outcome)
+
+    e[, `:=`(
+      match_chr = toupper(sub("^chr", "", as.character(CHR), ignore.case = TRUE)),
+      match_bp = suppressWarnings(as.numeric(BP)),
+      allele_lo = pmin(toupper(as.character(A1)), toupper(as.character(A2))),
+      allele_hi = pmax(toupper(as.character(A1)), toupper(as.character(A2))),
+      exposure_snp = as.character(SNP)
+    )]
+
+    o[, `:=`(
+      match_chr = toupper(sub("^chr", "", as.character(CHR), ignore.case = TRUE)),
+      match_bp = suppressWarnings(as.numeric(BP)),
+      allele_lo = pmin(toupper(as.character(A1)), toupper(as.character(A2))),
+      allele_hi = pmax(toupper(as.character(A1)), toupper(as.character(A2)))
+    )]
+
+    exposure_keys <- unique(
+      e[, .(match_chr, match_bp, allele_lo, allele_hi, exposure_snp)]
     )
-    if (nrow(outcome_rows)) {
-      outcome_rows[, SNP := SNP_exposure]
-      outcome_rows[, SNP_exposure := NULL]
+
+    coordinate_rows <- merge(
+      o,
+      exposure_keys,
+      by = c("match_chr", "match_bp", "allele_lo", "allele_hi"),
+      all = FALSE,
+      allow.cartesian = FALSE
+    )
+
+    if (nrow(coordinate_rows)) {
+      # Use the exposure SNP ID so TwoSampleMR can pair the records.
+      coordinate_rows[, SNP := exposure_snp]
+      coordinate_rows[, c(
+        "match_chr", "match_bp", "allele_lo", "allele_hi", "exposure_snp"
+      ) := NULL]
     }
   }
+
+  # Avoid including a variant twice if it matched by both methods.
+  if (nrow(direct_rows) && nrow(coordinate_rows)) {
+    coordinate_rows <- coordinate_rows[
+      !SNP %chin% direct_rows[["SNP"]]
+    ]
+  }
+
+  outcome_rows <- data.table::rbindlist(
+    list(direct_rows, coordinate_rows),
+    fill = TRUE
+  )
+  outcome_rows <- unique(outcome_rows, by = "SNP")
+
+  message(
+    "Outcome matches for ", exposure_name, " -> ", outcome_name,
+    ": ", nrow(direct_rows), " by SNP ID; ",
+    nrow(coordinate_rows), " additional by coordinates and alleles."
+  )
+
   if (!nrow(outcome_rows)) {
-    warning("Skipping ", exposure_name, " -> ", outcome_name,
-            ": none of the retained exposure instruments is present in the outcome by SNP ID or exact chromosome/position/alleles.")
+    warning(
+      "Skipping ", exposure_name, " -> ", outcome_name,
+      ": no instruments matched by SNP ID or by chromosome, position, and alleles."
+    )
     return(list(
       status = "skipped: no instrument overlap",
-      harmonised = data.table(),
-      mr = data.table(),
+      harmonised = data.table::data.table(),
+      mr = data.table::data.table(),
       heterogeneity = NULL,
       pleiotropy = NULL
     ))
@@ -503,18 +690,36 @@ run_tsmr_pair_stringent <- function(exposure, outcome, exposure_name, outcome_na
   out_dat <- to_tsmr(outcome_rows, "outcome", outcome_name)
   harm <- TwoSampleMR::harmonise_data(exp_dat, out_dat, action = 3)
   harm <- subset(harm, mr_keep)
-  if (!nrow(harm)) stop("No harmonized instruments for ", exposure_name, " -> ", outcome_name)
+
+  message(
+    "Harmonized instruments retained for ", exposure_name, " -> ",
+    outcome_name, ": ", nrow(harm)
+  )
+
+  if (!nrow(harm)) {
+    stop("No harmonized instruments for ", exposure_name, " -> ", outcome_name)
+  }
+
   methods <- if (nrow(harm) == 1L) {
     "mr_wald_ratio"
   } else {
     c("mr_ivw", "mr_weighted_median", "mr_egger_regression")
   }
+
   list(
     status = "completed",
     harmonised = harm,
     mr = TwoSampleMR::mr(harm, method_list = methods),
-    heterogeneity = if (nrow(harm) >= 2) TwoSampleMR::mr_heterogeneity(harm) else NULL,
-    pleiotropy = if (nrow(harm) >= 3) TwoSampleMR::mr_pleiotropy_test(harm) else NULL
+    heterogeneity = if (nrow(harm) >= 2L) {
+      TwoSampleMR::mr_heterogeneity(harm)
+    } else {
+      NULL
+    },
+    pleiotropy = if (nrow(harm) >= 3L) {
+      TwoSampleMR::mr_pleiotropy_test(harm)
+    } else {
+      NULL
+    }
   )
 }
 ```
@@ -572,6 +777,56 @@ tsmr_status <- data.table(
 fwrite(tsmr_status, file.path(OUT_DIR, "twosamplemr_status.csv"))
 ```
 
+#### Loneliness (METAL) MR
+```{r}
+
+traits$metal_lonely <- add_chr_bp_from_snp(traits$metal_lonely)
+
+# check snps added correctly
+head(traits$metal_lonely[, .(SNP, CHR, BP)])
+sum(!is.na(traits$metal_lonely$CHR) & !is.na(traits$metal_lonely$BP))
+
+# run MRs 
+
+# METAL loneliness -> Triglycerides
+tsmr_metal_tg <- run_tsmr_pair(traits$metal_lonely, traits$tg, "METAL loneliness", "Triglycerides")
+
+# METAL loneliness -> Depression
+tsmr_metal_dep <- run_tsmr_pair(traits$metal_lonely, traits$depression, "METAL loneliness", "Depression")
+
+# METAL Loneliness -> T2D
+tsmr_metal_t2d <-  run_tsmr_pair(traits$metal_lonely, traits$t2d, "METAL loneliness", "Type 2 Diabetes")
+
+# TG to METAL loneliness
+tsmr_tg_metal <- run_tsmr_pair(traits$tg, traits$metal_lonely, "Triglycerides", "METAL loneliness")
+
+# Dep to METAL
+tsmr_dep_metal <- run_tsmr_pair(traits$depression, traits$metal_lonely, "Depression", "METAL loneliness")
+
+# T2D to METAL
+tsmr_t2d_metal <- run_tsmr_pair(traits$t2d, traits$metal_lonely, "Type 2 Diabetes", "METAL loneliness")
+
+
+# bind results together
+tsmr_results_metal <- rbindlist(list(
+  tsmr_metal_tg$mr, tsmr_metal_dep$mr, tsmr_metal_t2d$mr,
+  tsmr_tg_metal$mr, tsmr_dep_metal$mr, tsmr_t2d_metal$mr
+), fill = TRUE)
+fwrite(tsmr_results_metal, file.path(OUT_DIR, "twosamplemr_results_metal.csv"))
+tsmr_status_metal <- data.table(
+  analysis = c("METAL loneliness -> Triglycerides", 
+               "METAL loneliness -> Depression",
+               "METAL loneliness -> Type 2 Diabetes",
+               "Triglycerides -> METAL loneliness", 
+               "Depression -> METAL loneliness",
+               "Type 2 Diabetes -> METAL loneliness"),
+
+  status = vapply(list(tsmr_metal_tg, tsmr_metal_dep, tsmr_metal_t2d,
+                       tsmr_tg_metal, tsmr_dep_metal, tsmr_t2d_metal), `[[`, character(1), "status")
+)
+fwrite(tsmr_status_metal, file.path(OUT_DIR, "twosamplemr_status_metal.csv"))
+```
+
 
 #### Check Mapping Issues
 - with AoU Chr:BP specifically
@@ -580,10 +835,10 @@ fwrite(tsmr_status, file.path(OUT_DIR, "twosamplemr_status.csv"))
 library(data.table)
 
 # Apply the same significance threshold used by clump_exposure().
-candidates <- traits$aou_lonely[is.finite(P) & P < 5e-6]
+candidates <- traits$metal_lonely[is.finite(P) & P < 5e-6]
 
 # Map AoU coordinate IDs to GRCh38 dbSNP rsIDs.
-mapped <- map_aou_to_rsid(candidates)
+#mapped <- map_aou_to_rsid(candidates)
 
 bim_ids <- fread(
   paste0(LD_BFILE, ".bim"),
@@ -593,25 +848,24 @@ bim_ids <- fread(
 )[[1L]]
 
 cat("Significant candidates:", nrow(candidates), "\n")
-cat("Candidates mapped to rsIDs:", sum(grepl("^rs[0-9]+$", mapped$SNP)), "\n")
+cat("Candidates mapped to rsIDs:", sum(grepl("^rs[0-9]+$", candidates$SNP)), "\n")
 cat("Unique rsIDs in BIM:", uniqueN(bim_ids), "\n")
 cat("Mapped rsIDs present in BIM:",
-    sum(unique(mapped$SNP) %chin% unique(bim_ids)), "\n")
+    sum(unique(candidates$SNP) %chin% unique(bim_ids)), "\n")
 
 cat("\nExample mapped IDs:\n")
-print(head(mapped$SNP, 10))
+print(head(candidates$SNP, 10))
 
 cat("\nExample BIM IDs:\n")
 print(head(bim_ids, 10))
 
 cat("\nMapped IDs not found in BIM:\n")
-print(head(setdiff(unique(mapped$SNP), unique(bim_ids)), 10))
+print(head(setdiff(unique(candidates$SNP), unique(bim_ids)), 10))
 
 print(head(candidates[, .(SNP, CHR, BP, A1, A2)], 10))
 str(candidates[, .(SNP, CHR, BP, A1, A2)])
 
-mapped <- map_aou_to_rsid(candidates)
-print(head(mapped[, .(SNP, CHR, BP, A1, A2)], 10))
+print(head(candidates[, .(SNP, CHR, BP, A1, A2)], 10))
 ```
 
 

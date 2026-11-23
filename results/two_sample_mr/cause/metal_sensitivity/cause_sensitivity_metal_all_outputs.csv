@@ -1,3 +1,7 @@
 analysis,trait1,trait2,p_threshold,run_status,error
-lone_to_tg,Loneliness (Metal),Triglycerides,0.001,failed,"no applicable method for 'mutate' applied to an object of class ""NULL"""
-tg_to_lone,Triglycerides,Loneliness (Metal),0.001,failed,"no applicable method for 'mutate' applied to an object of class ""NULL"""
+lone_to_tg,Loneliness (Metal),Triglycerides,0.001,failed,Fewer than five usable shared SNPs for Loneliness (Metal) -> Triglycerides
+tg_to_lone,Triglycerides,Loneliness (Metal),0.001,failed,Fewer than five usable shared SNPs for Triglycerides -> Loneliness (Metal)
+lone_to_t2d,Loneliness (Metal),T2D,0.001,failed,Fewer than five usable shared SNPs for Loneliness (Metal) -> T2D
+t2d_to_lone,T2D,Loneliness (Metal),0.001,failed,Fewer than five usable shared SNPs for T2D -> Loneliness (Metal)
+lone_to_dep,Loneliness (Metal),Depression,0.001,failed,Fewer than five usable shared SNPs for Loneliness (Metal) -> Depression
+dep_to_lone,Depression,Loneliness (Metal),0.001,failed,Fewer than five usable shared SNPs for Depression -> Loneliness (Metal)
