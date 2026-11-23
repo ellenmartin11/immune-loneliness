@@ -12,3 +12,5 @@ dep_to_tg_stringent,Not run: binary-trait pairs are excluded from this Steiger p
 t2d_to_aou_stringent,Not run: binary-trait pairs are excluded from this Steiger pass,
 t2d_to_panukb_stringent,Not run: binary-trait pairs are excluded from this Steiger pass,
 t2d_to_tg_stringent,Not run: binary-trait pairs are excluded from this Steiger pass,
+t2d_to_dep_stringent,Not run: binary-trait pairs are excluded from this Steiger pass,
+dep_to_t2d_stringent,Not run: binary-trait pairs are excluded from this Steiger pass,

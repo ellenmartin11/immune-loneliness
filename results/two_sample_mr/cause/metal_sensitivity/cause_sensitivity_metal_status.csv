@@ -1,0 +1,3 @@
+analysis,trait1,trait2,run_status,error
+lone_to_tg,Loneliness (Metal),Triglycerides,failed,"no applicable method for 'mutate' applied to an object of class ""NULL"""
+tg_to_lone,Triglycerides,Loneliness (Metal),failed,"no applicable method for 'mutate' applied to an object of class ""NULL"""

@@ -4,7 +4,7 @@ library(MRPRESSO)
 # And it will run for that comparison and save the output as an rds in the results/two_sample_mr folder for next steps
 # Can repeat with multiple other comparisons with presso
 
-project_dir <- "/gpfs/gibbs/project/polimanti/ejm96/immune"
+project_dir <- "/vast/palmer/pi/polimanti/ellen_m/immune"
 input_file <- file.path(
   project_dir,
   "results/two_sample_mr/tsmr_pairs_stringent.rds"

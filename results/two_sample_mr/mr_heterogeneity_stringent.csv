@@ -29,3 +29,7 @@ lLue2C,kXnC3f,PanUKB loneliness,Type 2 Diabetes,Inverse variance weighted,721.49
 lLue2C,kXnC3f,PanUKB loneliness,Type 2 Diabetes,MR Egger,709.390747639029,392,1.28619688822687e-20,t2d_to_panukb_stringent,
 zJC9Ii,LoM2M7,Triglycerides,Type 2 Diabetes,Inverse variance weighted,4703.21768894478,185,0,t2d_to_tg_stringent,
 zJC9Ii,LoM2M7,Triglycerides,Type 2 Diabetes,MR Egger,4558.3250352764,184,0,t2d_to_tg_stringent,
+HNWy48,Earkm2,Depression,Type 2 Diabetes,Inverse variance weighted,1276.48760102524,371,1.00178496037461e-99,t2d_to_dep_stringent,
+HNWy48,Earkm2,Depression,Type 2 Diabetes,MR Egger,1256.8365294955,370,5.7711063406327e-97,t2d_to_dep_stringent,
+qkoMNh,zs8YI5,Type 2 Diabetes,Depression,Inverse variance weighted,972.534588879118,130,5.42646344224398e-129,dep_to_t2d_stringent,
+qkoMNh,zs8YI5,Type 2 Diabetes,Depression,MR Egger,972.491914010637,129,2.00707978095635e-129,dep_to_t2d_stringent,

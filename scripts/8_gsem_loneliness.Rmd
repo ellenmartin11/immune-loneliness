@@ -46,6 +46,7 @@ stopifnot(
 )
 
 ```
+
 ```{r}
 head(colnames(covstruc$S))
 head(rownames(covstruc$V))
@@ -1799,4 +1800,42 @@ results_mr_mediation_model <- mr_mediation_model$results
 
 knitr::kable(results_mr_mediation_model[results_mr_mediation_model$op == "~", ], digits = 3)
 ```
+
+#### Figuring out what causes platelets n.s.
+
+```{r platelets}
+# setting these to latent factors so GenomicSEM works 
+platelets_adjusted <- '
+  LYMPH_F     =~ 1*LYMPH
+  EOS_F       =~ 1*EOS
+  MONO_F      =~ 1*MONO
+  NEUT_F      =~ 1*NEUT
+  PLT_F       =~ 1*PLT
+  ALBUMIN_F   =~ 1*ALBUMIN
+  CRP_F       =~ 1*CRP
+  TG_F        =~ 1*TG
+  IL6_F       =~ 1*IL6
+  GLYCA_F     =~ 1*GLYCA
+  INCOME_F    =~ 1*INCOME
+  BMI_F       =~ 1*BMI
+  LONELY_F    =~ 1*LONELY
+
+  LONELY_F ~ PLT_F + INCOME_F + BMI_F + LYMPH_F + EOS_F + MONO_F
+             
+'
+
+# fit model
+fit_platelets_adjusted <- GenomicSEM::usermodel(
+  covstruc,
+  estimation = "DWLS",
+  model = platelets_adjusted,
+  std.lv = TRUE
+)
+
+fit_platelets_adjusted
+```
+
+- when we add monocytes (on top of income, bmi, lymph and eosinophils), platelets no longer significantly associated with loneliness - because they are quite strongly correlated 
+- could potentially combine them all into a latent factor, then try a mediating model
+
 

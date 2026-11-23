@@ -548,6 +548,7 @@ tsmr_pan_t2d <-  run_tsmr_pair(traits$pan_lonely, traits$t2d, "PanUKB loneliness
 # Triglyceriudes --> T2D
 tsmr_tg_t2d <-  run_tsmr_pair(traits$tg, traits$t2d, "Triglycerides", "Type 2 Diabetes")
 
+
 # bind results together
 tsmr_results <- rbindlist(list(
   tsmr_aou_tg$mr, tsmr_aou_dep$mr, tsmr_pan_tg$mr,
@@ -1146,6 +1147,10 @@ run_pair_sensitivity <- function(result, comparison) {
   )
 }
 
+
+```
+
+```{r running on stringent and relaxed sensitivity, eval=FALSE, include=FALSE}
 ### sensitivity results 5e-6
 sensitivity_results <- lapply(names(tsmr_pairs), function(comparison) {
   run_pair_sensitivity(tsmr_pairs[[comparison]], comparison)
@@ -1242,6 +1247,7 @@ print("------STRINGENT------")
 heterogeneity_results_stringent
 egger_intercepts_stringent
 ```
+
 - all comparisons show significant heterogentiy (Cochran's Q)
 
 - significant egger intercepts for: 
@@ -1265,7 +1271,7 @@ egger_intercepts_stringent
 
 ```{r reimport data, echo=FALSE}
 
-sensitivity_results <- readRDS("/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/mr_sensitivity_full_results.rds")
+sensitivity_results <- readRDS("/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/mr_sensitivity_full_results.rds")
 
 combine_sensitivity <- function(field) {
   data.table::rbindlist(
@@ -1284,7 +1290,7 @@ steiger_results <- combine_sensitivity("steiger")
 
 # stringent
 
-sensitivity_results_stringent <- readRDS("/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/mr_sensitivity_full_results_stringent.rds")
+sensitivity_results_stringent <- readRDS("/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/mr_sensitivity_full_results_stringent.rds")
 
 combine_sensitivity <- function(field) {
   data.table::rbindlist(
@@ -1468,10 +1474,18 @@ p_mr_sensitivity_stringent <- ggplot(
   theme(
     panel.grid.major.y = element_blank(),
     axis.line.y = element_blank(),
-    legend.position = "right"
+    legend.position = "bottom"
   )
 
 p_mr_sensitivity_stringent
+```
+```{r save main MR fig}
+ggsave(file.path(OUT_DIR, "TSMR_stringent_forest.png"),
+       p_mr_sensitivity_stringent,
+       height=6,
+       width=8)
+
+       
 ```
 
 #### Separate plot for AoU sensitivity analyses
@@ -1961,7 +1975,7 @@ saveRDS(
 ```
 
 
-```{r plot for t2d to tg, echo=FALSE}
+```{r plot for t2d to tg, eval=FALSE, include=FALSE}
 
 presso_t2d_tg <- readRDS("/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/presso_t2d_tg_stringent.rds")
 outlier_table <- as.data.table(
@@ -1995,7 +2009,7 @@ ggplot(
 ```
 - several MR-PRESSO outliers, but distortion test also n.s.
 
-```{r TG to T2D PRESSO}
+```{r TG to T2D PRESSO, eval=FALSE, include=FALSE}
 # lowering to 1000 for this run
 presso_tg_t2d <- run_presso_pair(
   tsmr_pairs_stringent[["tg_to_t2d_stringent"]]$harmonised
@@ -2003,5 +2017,145 @@ presso_tg_t2d <- run_presso_pair(
 
 # genuinely takes for ever, next one I submit will be via a compute node. 
 
+```
+
+#### Checking T2D <-> Depression
+
+```{r T2D and Depression, eval=FALSE, include=FALSE}
+# NEW!! T2D -> Depression
+tsmr_t2d_dep <- run_tsmr_pair_stringent(traits$t2d, traits$depression, "Type 2 Diabetes", "Depression")
+tsmr_dep_t2d <- run_tsmr_pair_stringent(traits$depression, traits$t2d, "Depression", "Type 2 Diabetes")
+
+tsmr_t2d_dep_stringent <- tsmr_t2d_dep
+tsmr_dep_t2d_stringent <- tsmr_dep_t2d
+```
+
+```{r T2D and Depression relaxed, eval=FALSE, include=FALSE}
+# !! T2D -> Depression relexed
+tsmr_t2d_dep <- run_tsmr_pair(traits$t2d, traits$depression, "Type 2 Diabetes", "Depression")
+tsmr_dep_t2d <- run_tsmr_pair(traits$depression, traits$t2d, "Depression", "Type 2 Diabetes")
+
+```
+
+```{r saving new object, eval=FALSE, include=FALSE}
+tsmr_pairs_stringent <- readRDS("/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/tsmr_pairs_stringent.rds")
+
+tsmr_pairs_stringent[["t2d_to_dep_stringent"]] <- tsmr_t2d_dep_stringent
+tsmr_pairs_stringent[["dep_to_t2d_stringent"]] <- tsmr_dep_t2d_stringent
+
+saveRDS(
+  tsmr_pairs_stringent,
+  "/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/tsmr_pairs_stringent.rds"
+)
+```
+
+```{r saving relaxed, eval=FALSE, include=FALSE}
+tsmr_pairs <- readRDS("/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/tsmr_pairs.rds")
+
+tsmr_pairs[["t2d_to_dep"]] <- tsmr_t2d_dep
+tsmr_pairs[["dep_to_t2d"]] <- tsmr_dep_t2d
+
+saveRDS(
+  tsmr_pairs,
+  "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/tsmr_pairs.rds"
+)
+```
+
+#### Running Sensitivity Analyses
+```{r eval=FALSE, include=FALSE}
+tsmr_pairs_stringent <- readRDS("/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/tsmr_pairs_stringent.rds")
+
+sensitivity_results_stringent <- lapply(names(tsmr_pairs_stringent), function(comparison) {
+  run_pair_sensitivity(tsmr_pairs_stringent[[comparison]], comparison)
+})
+
+names(sensitivity_results_stringent) <- names(tsmr_pairs_stringent)
+combine_sensitivity_stringent <- function(field) {
+  data.table::rbindlist(
+    lapply(sensitivity_results_stringent, `[[`, field),
+    fill = TRUE
+  )
+}
+```
+
+```{r sensitivity relaxed new}
+sensitivity_results <- lapply(names(tsmr_pairs), function(comparison) {
+  run_pair_sensitivity(tsmr_pairs[[comparison]], comparison)
+})
+
+names(sensitivity_results) <- names(tsmr_pairs)
+combine_sensitivity <- function(field) {
+  data.table::rbindlist(
+    lapply(sensitivity_results, `[[`, field),
+    fill = TRUE
+  )
+}
+```
+
+#### Saving as CSV
+```{r saving all as csv, eval=FALSE, include=FALSE}
+
+OUT_DIR <- "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr"
+#stringent
+instrument_strength_stringent <- combine_sensitivity_stringent("strength")
+sensitivity_estimates_stringent <- combine_sensitivity_stringent("estimates")
+heterogeneity_results_stringent <- combine_sensitivity_stringent("heterogeneity")
+egger_intercepts_stringent <- combine_sensitivity_stringent("egger_intercept")
+leave_one_out_results_stringent <- combine_sensitivity_stringent("leave_one_out")
+single_snp_results_stringent <- combine_sensitivity_stringent("single_snp")
+steiger_results_stringent <- combine_sensitivity_stringent("steiger")
+
+data.table::fwrite(instrument_strength_stringent,
+                   file.path(OUT_DIR, "mr_instrument_strength_stringent.csv"))
+data.table::fwrite(sensitivity_estimates_stringent,
+                   file.path(OUT_DIR, "mr_sensitivity_estimates_stringent.csv"))
+data.table::fwrite(heterogeneity_results_stringent,
+                   file.path(OUT_DIR, "mr_heterogeneity_stringent.csv"))
+data.table::fwrite(egger_intercepts_stringent,
+                   file.path(OUT_DIR, "mr_egger_intercepts_stringent.csv"))
+data.table::fwrite(leave_one_out_results_stringent,
+                   file.path(OUT_DIR, "mr_leave_one_out_stringent.csv"))
+data.table::fwrite(single_snp_results_stringent,
+                   file.path(OUT_DIR, "mr_single_snp_stringent.csv"))
+data.table::fwrite(steiger_results_stringent,
+                   file.path(OUT_DIR, "mr_steiger_continuous_pairs_stringent.csv"))
+
+saveRDS(
+  sensitivity_results_stringent,
+  file.path(OUT_DIR, "mr_sensitivity_full_results_stringent.rds")
+)
+
+
+
+```
+
+```{r saving relaxed new}
+instrument_strength <- combine_sensitivity("strength")
+sensitivity_estimatest <- combine_sensitivity("estimates")
+heterogeneity_results <- combine_sensitivity("heterogeneity")
+egger_intercepts <- combine_sensitivity("egger_intercept")
+leave_one_out_results <- combine_sensitivity("leave_one_out")
+single_snp_results <- combine_sensitivity("single_snp")
+steiger_results <- combine_sensitivity("steiger")
+
+data.table::fwrite(instrument_strength,
+                   file.path(OUT_DIR, "mr_instrument_strength.csv"))
+data.table::fwrite(sensitivity_estimates,
+                   file.path(OUT_DIR, "mr_sensitivity_estimates.csv"))
+data.table::fwrite(heterogeneity_results,
+                   file.path(OUT_DIR, "mr_heterogeneity.csv"))
+data.table::fwrite(egger_intercepts,
+                   file.path(OUT_DIR, "mr_egger_intercepts.csv"))
+data.table::fwrite(leave_one_out_results,
+                   file.path(OUT_DIR, "mr_leave_one_out.csv"))
+data.table::fwrite(single_snp_results,
+                   file.path(OUT_DIR, "mr_single_snp.csv"))
+data.table::fwrite(steiger_results,
+                   file.path(OUT_DIR, "mr_steiger_continuous_pairs.csv"))
+
+saveRDS(
+  sensitivity_results,
+  file.path(OUT_DIR, "mr_sensitivity_full_results.rds")
+)
 ```
 

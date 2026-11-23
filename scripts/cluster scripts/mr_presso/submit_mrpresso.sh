@@ -24,7 +24,7 @@ if [[ "$#" -ne 1 ]]; then
 fi
 
 PAIR_NAME="$1"
-PROJECT_DIR="/gpfs/gibbs/project/polimanti/ejm96/immune"
+PROJECT_DIR="/vast/palmer/pi/polimanti/ellen_m/immune"
 SCRIPT="${PROJECT_DIR}/scripts/cluster scripts/mr_presso/run_mrpresso.R"
 
 module load R/4.2.0-foss-2020b

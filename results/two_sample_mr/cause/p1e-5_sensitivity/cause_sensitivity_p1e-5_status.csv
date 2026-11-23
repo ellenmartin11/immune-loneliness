@@ -1,0 +1,13 @@
+analysis,trait1,trait2,run_status,error
+lone_to_tg,Loneliness,Triglycerides,completed,
+tg_to_lone,Triglycerides,Loneliness,completed,
+t2d_to_tg,T2D,Triglycerides,completed,
+tg_to_t2d,Triglycerides,T2D,completed,
+t2d_to_lone,T2D,Loneliness,completed,
+lone_to_t2d,Loneliness,T2D,completed,
+t2d_to_dep,T2D,Depression,completed,
+dep_to_t2d,Depression,T2D,completed,
+dep_to_tg,Depression,Triglycerides,completed,
+tg_to_dep,Triglycerides,Depression,completed,
+lone_to_dep,Loneliness,Depression,completed,
+dep_to_lone,Depression,Loneliness,completed,

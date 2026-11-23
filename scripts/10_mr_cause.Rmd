@@ -7,7 +7,7 @@ output: html_notebook
 - CAUSE is used to address issues of correlated pleiotropy and is more robust
 - note, we need loo@2.9.0 for this to work without compatibility issues
 
-```{r load libraries and directories, include=FALSE}
+```{r load libraries and directories, eval=FALSE, include=FALSE}
 library(readr)
 library(cause)
 library(dplyr)
@@ -15,23 +15,29 @@ library(ieugwasr)
 
 PLINK_BIN <- "/vast/palmer/apps/avx2/software/PLINK/1.9b_6.21-x86_64/plink"
 LD_BFILE <- "/gpfs/gibbs/pi/polimanti/LDSC_1000G/g1000_eur"
-
+OUT_DIR <- "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/"
 
 ```
 
 #### Checking Loneliness <-> Triglycerides
 
 ```{r loading loneliness and tg, eval=FALSE, cache=TRUE, include=FALSE}
-PATH_PAN_LONELY <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/005_Loneliness_isolation_PanUKB_clean.tsv.gz"
-loneliness <- read_tsv(PATH_PAN_LONELY)
+PATH_PAN_LONELY <- "/gpfs/gibbs/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/005_Loneliness_isolation_PanUKB_clean.tsv.gz"
+lone<- read_tsv(PATH_PAN_LONELY)
 
-PATH_TG <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/metal_ivw/Triglycerides_METAL_combined.tsv.gz"
+PATH_TG <- "/gpfs/gibbs/scratch/polimanti/ejm96/metal_ldsc_pipeline/metal_ivw/Triglycerides_METAL_combined.tsv.gz"
 tg <- read_tsv(PATH_TG)
 
-PATH_T2D <- "/vast/palmer/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/006_Type_2_Diabetes_clean.tsv.gz"
+PATH_T2D <- "/gpfs/gibbs/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/006_Type_2_Diabetes_clean.tsv.gz"
 t2d <- read_tsv(PATH_T2D)
 
-colnames(loneliness)
+PATH_DEPRESSION <- "/gpfs/gibbs/scratch/polimanti/ejm96/metal_ldsc_pipeline/primary_clean/012_Depression_PGC_clean.tsv.gz"
+dep <- read_tsv(PATH_DEPRESSION)
+
+PATH_LONELINESS_METAL <- "/gpfs/gibbs/scratch/polimanti/ejm96/metal_ldsc_pipeline/loneliness_metal/Loneliness_PanUKB_AoU_METAL_combined.tsv.gz"
+lone_metal <- read_tsv(PATH_LONELINESS_METAL)
+
+colnames(lone)
 colnames(tg)
 colnames(t2d)
 ```
@@ -44,7 +50,7 @@ head(tg)
 ```
 
 #### Format Loneliness to Triglycerides
-```{r harmonizing and formatting}
+```{r harmonizing and formatting, eval=FALSE, include=FALSE}
 lone_tg <- cause::gwas_merge(
   loneliness,
   tg,
@@ -55,10 +61,13 @@ lone_tg <- cause::gwas_merge(
   A2_cols = c("A2", "A2")
 )
 
-saveRDS(lone_tg, "/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/lone_tg.rds")
+saveRDS(lone_tg, "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/lone_tg.rds")
 ```
 
-```{r check formatting, echo=FALSE}
+```{r check formatting, eval=FALSE, include=FALSE}
+lone_tg <- readRDS("/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/lone_tg.rds")
+
+
 head(lone_tg)
 
 names(lone_tg)
@@ -90,9 +99,9 @@ names(params)
 params$rho
 ```
 
-```{r reload parameter estiamtes, echo=FALSE}
+```{r reload parameter estiamtes, eval=FALSE, include=FALSE}
 
-params <- readRDS("/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/CAUSE_params_lone_tg.rds")
+params <- readRDS("/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/CAUSE_params_lone_tg.rds")
 
 
 ```
@@ -103,7 +112,6 @@ params <- readRDS("/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample
 
 
 ```{r clumping threshold, eval=FALSE, cache=TRUE, include=FALSE}
-lone_tg <- readRDS("/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/lone_tg.rds")
 
 ld_input <- data.frame(
   rsid = lone_tg$snp,
@@ -129,7 +137,7 @@ clumped <- ieugwasr::ld_clump(
 top_vars <- clumped$rsid
 ```
 
-```{r check vars}
+```{r check vars, eval=FALSE, include=FALSE}
 length(top_vars)
 head(top_vars)
 ```
@@ -147,11 +155,13 @@ cause_lone_tg <- cause::cause(
 
 ```
 
-```{r show results lone tg, echo=TRUE}
+```{r show results lone tg, eval=FALSE, include=FALSE}
 summary(cause_lone_tg)
 cause_lone_tg$elpd
 plot(cause_lone_tg)
 summary(cause_lone_tg, ci_size = 0.95)
+
+saveRDS(cause_lone_tg, "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/cause_lone_tg.rds")
 ```
 
 
@@ -180,7 +190,7 @@ tg_lone$p1 <- 2 * pnorm(
 )
 
 
-saveRDS(tg_lone, "/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/tg_lone.rds")
+saveRDS(tg_lone, "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/tg_lone.rds")
 
 
 ```
@@ -192,7 +202,7 @@ params <- est_cause_params(tg_lone, varlist)
 
 saveRDS(
   params,
-  file.path("/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/CAUSE_params_tg_lone.rds")
+  file.path("/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/CAUSE_params_tg_lone.rds")
 )
 ```
 
@@ -232,13 +242,13 @@ cause_tg_lone <- cause::cause(
 
 ```
 
-```{r results tg lone, echo=TRUE}
+```{r results tg lone, eval=FALSE, include=FALSE}
 summary(cause_tg_lone)
 cause_tg_lone$elpd
 plot(cause_tg_lone)
 summary(cause_tg_lone, ci_size = 0.95)
 
-saveRDS(cause_tg_lone, "/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/cause_tg_lone.rds")
+saveRDS(cause_tg_lone, "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause_tg_lone.rds")
 
 ```
 - also finds causal model from Tg -> loneliness is a better fit than the shared model (delta elpd= -4.05,	se = 1.70, z =	-2.38, p = 0.0086)
@@ -246,7 +256,7 @@ saveRDS(cause_tg_lone, "/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_s
 
 #### T2D to Triglycerides
 
-```{r T2D to triglycerides harmonization}
+```{r T2D to triglycerides harmonization, eval=FALSE, include=FALSE}
 t2d_tg <- cause::gwas_merge(
   t2d,
   tg,
@@ -262,7 +272,7 @@ t2d_tg$p1 <- 2 * pnorm(
 )
 
 
-saveRDS(t2d_tg, "/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/cause/t2d_tg.rds")
+saveRDS(t2d_tg, "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/t2d_tg.rds")
 ```
 ```{r params t2d to tg}
 set.seed(100)
@@ -271,8 +281,998 @@ params <- est_cause_params(t2d_tg, varlist)
 
 saveRDS(
   params,
-  file.path("/gpfs/gibbs/project/polimanti/ejm96/immune/results/two_sample_mr/cause/CAUSE_params_t2d_tg.rds")
+  file.path("/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/CAUSE_params_t2d_tg.rds")
 )
 ```
 
+```{r t2d to tg clumping, eval=FALSE, include=FALSE}
 
+t2d_tg <- readRDS("/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/t2d_tg.rds")
+
+ld_input <- data.frame(
+  rsid = t2d_tg$snp,
+  pval = t2d_tg$p1,
+  id = "loneliness"
+)
+
+ld_input <- ld_input[
+  !is.na(ld_input$rsid) &
+    !duplicated(ld_input$rsid) &
+    is.finite(ld_input$pval),
+]
+
+clumped <- ieugwasr::ld_clump(
+  dat = ld_input,
+  clump_kb = 10000,
+  clump_r2 = 0.01,
+  clump_p = 1e-3,
+  bfile = LD_BFILE,
+  plink_bin = PLINK_BIN
+)
+
+top_vars <- clumped$rsid
+```
+
+```{r cause fit t2d to tg, eval=FALSE, include=FALSE}
+params <- readRDS("/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/CAUSE_params_t2d_tg.rds")
+
+cause_t2d_tg <- cause::cause(
+  X = t2d_tg,
+  variants = top_vars,
+  param_ests = params,
+  pval_thresh = 1e-3
+)
+```
+
+```{r results t2d tg, eval=FALSE, include=FALSE}
+summary(cause_t2d_tg)
+cause_t2d_tg$elpd
+plot(cause_t2d_tg)
+summary(cause_t2d_tg, ci_size = 0.95)
+
+saveRDS(cause_t2d_tg, "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/cause_t2d_tg.rds")
+```
+- again, casual model fits better than shared model, and T2d -> Tg shows the largest causal effect so far 
+
+#### TG to T2D
+- checking reverse causal direction
+
+```{r eval=FALSE, include=FALSE}
+tg_t2d <- cause::gwas_merge(
+  tg,
+  t2d,
+  snp_name_cols = c("SNP", "SNP"),
+  beta_hat_cols = c("BETA", "BETA"),
+  se_cols = c("SE", "SE"),
+  A1_cols = c("A1", "A1"),
+  A2_cols = c("A2", "A2")
+)
+
+tg_t2d$p1 <- 2 * pnorm(
+  -abs(tg_t2d$beta_hat_1 / tg_t2d$seb1)
+)
+
+
+saveRDS(tg_t2d, "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/tg_t2d.rds")
+```
+```{r params tg to t2d}
+set.seed(100)
+varlist <- with(tg_t2d, sample(snp, size=1000000, replace=FALSE))
+params <- est_cause_params(tg_t2d, varlist)
+
+saveRDS(
+  params,
+  file.path("/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/CAUSE_params_tg_t2d.rds")
+)
+```
+
+```{r clumping tg to t2d, eval=FALSE, include=FALSE}
+
+ld_input <- data.frame(
+  rsid = tg_t2d$snp,
+  pval = tg_t2d$p1,
+  id = "loneliness"
+)
+
+ld_input <- ld_input[
+  !is.na(ld_input$rsid) &
+    !duplicated(ld_input$rsid) &
+    is.finite(ld_input$pval),
+]
+
+clumped <- ieugwasr::ld_clump(
+  dat = ld_input,
+  clump_kb = 10000,
+  clump_r2 = 0.01,
+  clump_p = 1e-3,
+  bfile = LD_BFILE,
+  plink_bin = PLINK_BIN
+)
+
+top_vars <- clumped$rsid
+```
+
+
+```{r cause tg to t2d, eval=FALSE, include=FALSE}
+cause_tg_t2d <- cause::cause(
+  X = tg_t2d,
+  variants = top_vars,
+  param_ests = params,
+  pval_thresh = 1e-3
+)
+```
+
+```{r plotting tg to t2d, eval=FALSE, include=FALSE}
+summary(cause_tg_t2d)
+cause_tg_t2d$elpd
+plot(cause_tg_t2d)
+summary(cause_tg_t2d, ci_size = 0.95)
+
+saveRDS(cause_tg_t2d, "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/cause_tg_t2d.rds")
+```
+#### T2D -> Loneliness?
+
+```{r t2d to loneliness hamronizing, eval=FALSE, include=FALSE}
+t2d_lone <- cause::gwas_merge(
+  t2d,
+  lone,
+  snp_name_cols = c("SNP", "SNP"),
+  beta_hat_cols = c("BETA", "BETA"),
+  se_cols = c("SE", "SE"),
+  A1_cols = c("A1", "A1"),
+  A2_cols = c("A2", "A2")
+)
+
+t2d_lone$p1 <- 2 * pnorm(
+  -abs(t2d_lone$beta_hat_1 / t2d_lone$seb1)
+)
+
+
+saveRDS(t2d_lone, "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/t2d_lone.rds")
+```
+
+```{r params t2d to lone, eval=FALSE, include=FALSE}
+set.seed(100)
+varlist <- with(t2d_lone, sample(snp, size=1000000, replace=FALSE))
+params <- est_cause_params(t2d_lone, varlist)
+
+saveRDS(
+  params,
+  file.path("/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/CAUSE_params_t2d_lone.rds")
+)
+```
+
+```{r clumping t2d to lone, eval=FALSE, include=FALSE}
+
+ld_input <- data.frame(
+  rsid = t2d_lone$snp,
+  pval = t2d_lone$p1,
+  id = "loneliness"
+)
+
+ld_input <- ld_input[
+  !is.na(ld_input$rsid) &
+    !duplicated(ld_input$rsid) &
+    is.finite(ld_input$pval),
+]
+
+clumped <- ieugwasr::ld_clump(
+  dat = ld_input,
+  clump_kb = 10000,
+  clump_r2 = 0.01,
+  clump_p = 1e-3,
+  bfile = LD_BFILE,
+  plink_bin = PLINK_BIN
+)
+
+top_vars <- clumped$rsid
+```
+
+```{r cause t2d to lone, eval=FALSE, include=FALSE}
+cause_t2d_lone <- cause::cause(
+  X = t2d_lone,
+  variants = top_vars,
+  param_ests = params,
+  pval_thresh = 1e-3
+)
+```
+
+```{r plotting t2d to lone, eval=FALSE, include=FALSE}
+summary(cause_t2d_lone)
+cause_t2d_lone$elpd
+plot(cause_t2d_lone)
+summary(cause_t2d_lone, ci_size = 0.95)
+
+saveRDS(cause_t2d_lone, "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/cause_t2d_lone.rds")
+```
+#### Lone to T2D
+
+```{r lone to t2d hamronizing, eval=FALSE, include=FALSE}
+lone_t2d <- cause::gwas_merge(
+  lone,
+  t2d,
+  snp_name_cols = c("SNP", "SNP"),
+  beta_hat_cols = c("BETA", "BETA"),
+  se_cols = c("SE", "SE"),
+  A1_cols = c("A1", "A1"),
+  A2_cols = c("A2", "A2")
+)
+
+lone_t2d$p1 <- 2 * pnorm(
+  -abs(lone_t2d$beta_hat_1 / lone_t2d$seb1)
+)
+
+
+saveRDS(lone_t2d, "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/lone_t2d.rds")
+```
+
+```{r params lone to t2d, eval=FALSE, include=FALSE}
+set.seed(100)
+varlist <- with(lone_t2d, sample(snp, size=1000000, replace=FALSE))
+params <- est_cause_params(lone_t2d, varlist)
+
+saveRDS(
+  params,
+  file.path("/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/CAUSE_params_lone_t2d.rds")
+)
+```
+
+```{r clumping lone to t2d, eval=FALSE, include=FALSE}
+
+ld_input <- data.frame(
+  rsid = lone_t2d$snp,
+  pval = lone_t2d$p1,
+  id = "loneliness"
+)
+
+ld_input <- ld_input[
+  !is.na(ld_input$rsid) &
+    !duplicated(ld_input$rsid) &
+    is.finite(ld_input$pval),
+]
+
+clumped <- ieugwasr::ld_clump(
+  dat = ld_input,
+  clump_kb = 10000,
+  clump_r2 = 0.01,
+  clump_p = 1e-3,
+  bfile = LD_BFILE,
+  plink_bin = PLINK_BIN
+)
+
+top_vars <- clumped$rsid
+```
+
+```{r cause lone to t2d, eval=FALSE, include=FALSE}
+cause_lone_t2d <- cause::cause(
+  X = lone_t2d,
+  variants = top_vars,
+  param_ests = params,
+  pval_thresh = 1e-3
+)
+```
+```{r checking pareto, eval=FALSE, include=FALSE}
+loo::pareto_k_table(cause_lone_t2d$loo_results)
+```
+
+```{r plotting lone to t2d, eval=FALSE, include=FALSE}
+summary(cause_lone_t2d)
+cause_lone_t2d$elpd
+plot(cause_lone_t2d)
+summary(cause_lone_t2d, ci_size = 0.95)
+
+saveRDS(cause_lone_t2d, "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/cause_lone_t2d.rds")
+```
+
+### Save all MR CAUSE results in a giant CSV
+
+```{r reading all cause fits, include=FALSE}
+cause_dir <- "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause"
+
+cause_fits <- list(
+  lone_to_tg = readRDS(file.path(cause_dir, "cause_lone_tg.rds")),
+  tg_to_lone = readRDS(file.path(cause_dir, "cause_tg_lone.rds")),
+  lone_to_t2d = readRDS(file.path(cause_dir, "cause_lone_t2d.rds")),
+  t2d_to_lone = readRDS(file.path(cause_dir, "cause_t2d_lone.rds")),
+  t2d_to_tg = readRDS(file.path(cause_dir, "cause_t2d_tg.rds")),
+  tg_to_t2d = readRDS(file.path(cause_dir, "cause_tg_t2d.rds")),
+  t2d_to_dep = readRDS(file.path(cause_dir, "cause_t2d_dep.rds")),
+  dep_to_t2d = readRDS(file.path(cause_dir, "cause_dep_t2d.rds")),
+  dep_to_tg = readRDS(file.path(cause_dir, "cause_dep_tg.rds")),
+  tg_to_dep = readRDS(file.path(cause_dir, "cause_tg_dep.rds")),
+  lone_to_dep = readRDS(file.path(cause_dir, "cause_lone_dep.rds")),
+  dep_to_lone = readRDS(file.path(cause_dir, "cause_dep_lone.rds"))
+)
+
+
+```
+
+
+```{r make cause plot data, include=FALSE}
+library(data.table)
+library(ggplot2)
+
+# Extract CAUSE results
+cause_plot_data <- rbindlist(
+  lapply(names(cause_fits), function(nm) {
+    extract_cause_gamma(cause_fits[[nm]], nm)
+  })
+)
+
+# Order comparisons by absolute gamma
+label_order <- unique(
+  cause_plot_data[order(abs(gamma)), as.character(comparison)]
+)
+
+cause_plot_data[, comparison := factor(
+  comparison,
+  levels = label_order
+)]
+
+# Format model comparison p-values
+cause_plot_data[, p_label := paste0(
+  "Model comparison p = ",
+  format.pval(model_p, digits = 2, eps = 0.001)
+)]
+```
+
+
+
+```{r plotting cause, echo=FALSE}
+library(data.table)
+library(ggplot2)
+
+
+cause_labels <- c(
+  lone_to_tg = "Loneliness \u2192 TG",
+  tg_to_lone = "TG \u2192 Loneliness",
+  lone_to_t2d = "Loneliness \u2192 T2D",
+  t2d_to_lone = "T2D \u2192 Loneliness",
+  t2d_to_tg = "T2D \u2192 TG",
+  tg_to_t2d = "TG \u2192 T2D",
+  dep_to_tg = "Depression \u2192 TG",
+  tg_to_dep = "TG \u2192 Depression",
+  dep_to_t2d = "Depression \u2192 T2D",
+  t2d_to_dep = "T2D \u2192 Depression",
+  lone_to_dep = "Loneliness \u2192 Depression",
+  dep_to_lone = "Depression \u2192 Loneliness"
+
+)
+
+cause_plot_data[, comparison_label := unname(cause_labels[as.character(comparison)])]
+cause_plot_data[is.na(comparison_label), comparison_label := as.character(comparison)]
+
+# Preserve the existing order, but display the directional labels.
+label_order <- cause_plot_data[order(abs(gamma)), comparison_label]
+cause_plot_data[, comparison_label := factor(comparison_label, levels = label_order)]
+
+# In the plot, replace y = comparison with y = comparison_label.
+p_cause_plot <- ggplot(
+  cause_plot_data,
+  aes(x = gamma, y = comparison_label, color = causal_model_favored)
+) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey55") +
+  geom_errorbar(
+    aes(xmin = ci_low, xmax = ci_high),
+    orientation = "y",
+    width = 0.2,
+    linewidth = 0.7
+  ) +
+  geom_point(size = 2.8) +
+  geom_text(
+    aes(label = p_label),
+    x = Inf,
+    hjust = 1.05,
+    color = "grey25",
+    size = 3.2
+  ) +
+  scale_color_manual(
+    values = c(`FALSE` = "grey45", `TRUE` = "#1676D2"),
+    labels = c(`FALSE` = "Causal model not favored",
+               `TRUE` = "Causal model favored"),
+    name = NULL
+  ) +
+  scale_x_continuous(expand = expansion(mult = c(0.08, 0.45))) +
+  labs(
+    x = "CAUSE gamma, posterior median and 95% credible interval",
+    y = NULL,
+    title = "CAUSE causal-effect estimates across trait pairs"
+  ) +
+  theme_bw(base_size = 12) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    legend.position = "top"
+  )
+
+p_cause_plot
+```
+```{r saving plot, eval=FALSE, include=FALSE}
+
+ggsave("/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/CAUSE_forest_plot.png",
+       p_cause_plot,
+       height = 6,
+       width = 10)
+```
+
+
+- evidence that triglycerides and T2D share liability via horizontal pleiotropy, but there is some evidence of T2D on triglycerides, independently of pleiotropic effects
+
+#### Saving CSV
+
+```{r eval=FALSE, include=FALSE}
+library(data.table)
+library(cause)
+
+extract_model_quantiles <- function(qmat, model_name) {
+  out <- list()
+
+  for (parameter in c("gamma", "eta", "q")) {
+    values <- if (is.matrix(qmat) && parameter %in% colnames(qmat)) {
+      as.numeric(qmat[, parameter])
+    } else {
+      rep(NA_real_, 3)
+    }
+
+    if (length(values) < 3L) values <- rep(NA_real_, 3)
+
+    # CAUSE returns median, lower limit, then upper limit.
+    out[[paste(model_name, parameter, "median", sep = "_")]] <- values[1]
+    out[[paste(model_name, parameter, "ci_low", sep = "_")]] <- values[2]
+    out[[paste(model_name, parameter, "ci_high", sep = "_")]] <- values[3]
+  }
+
+  out
+}
+
+summarise_cause_fit <- function(fit, comparison) {
+  s <- summary(fit, ci_size = 0.95, digits = 8)
+  q <- s[["quants"]]
+
+  if (!is.list(q) || length(q) < 2L) {
+    stop("Unexpected CAUSE quantile summary for ", comparison)
+  }
+
+  row <- c(
+    list(
+      comparison = comparison,
+      model_comparison_z = as.numeric(s[["z"]]),
+      model_comparison_p = as.numeric(s[["p"]]),
+      causal_model_favored =
+        is.finite(s[["z"]]) && is.finite(s[["p"]]) &&
+        s[["z"]] < 0 && s[["p"]] < 0.05
+    ),
+    extract_model_quantiles(q[[1]], "sharing"),
+    extract_model_quantiles(q[[2]], "causal")
+  )
+
+  # Add the ELPD comparison statistics stored in the fit.
+  elpd <- as.data.table(fit[["elpd"]])
+
+  if (nrow(elpd) && all(c("model1", "model2") %in% names(elpd))) {
+    for (i in seq_len(nrow(elpd))) {
+      comparison_name <- gsub(
+        "[^A-Za-z0-9]+", "_",
+        paste(elpd$model1[i], "vs", elpd$model2[i], sep = "_")
+      )
+
+      for (column in intersect(
+        c("delta_elpd", "se_delta_elpd", "z", "p"),
+        names(elpd)
+      )) {
+        row[[paste("elpd", comparison_name, column, sep = "_")]] <-
+          elpd[[column]][i]
+      }
+    }
+  }
+
+  as.data.table(row)
+}
+
+cause_summary_table <- rbindlist(
+  lapply(names(cause_fits), function(nm) {
+    summarise_cause_fit(cause_fits[[nm]], nm)
+  }),
+  fill = TRUE
+)
+
+output_file <- file.path(cause_dir, "cause_all_results_summary.csv")
+fwrite(cause_summary_table, output_file)
+
+cause_summary_table
+```
+
+#### T2D to Depression
+
+```{r harmonizing t2d to dep, eval=FALSE, include=FALSE}
+t2d_dep <- cause::gwas_merge(
+  t2d,
+  dep,
+  snp_name_cols = c("SNP", "SNP"),
+  beta_hat_cols = c("BETA", "BETA"),
+  se_cols = c("SE", "SE"),
+  A1_cols = c("A1", "A1"),
+  A2_cols = c("A2", "A2")
+)
+
+t2d_dep$p1 <- 2 * pnorm(
+  -abs(t2d_dep$beta_hat_1 / t2d_dep$seb1)
+)
+
+
+saveRDS(t2d_dep, "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/t2d_dep.rds")
+```
+
+```{r params t2d to dep, eval=FALSE, include=FALSE}
+set.seed(100)
+varlist <- with(t2d_dep, sample(snp, size=1000000, replace=FALSE))
+params <- est_cause_params(t2d_dep, varlist)
+
+saveRDS(
+  params,
+  file.path("/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/CAUSE_params_t2d_dep.rds")
+)
+```
+
+```{r clumping t2d to dep, eval=FALSE, include=FALSE}
+
+ld_input <- data.frame(
+  rsid = t2d_dep$snp,
+  pval = t2d_dep$p1,
+  id = "loneliness"
+)
+
+ld_input <- ld_input[
+  !is.na(ld_input$rsid) &
+    !duplicated(ld_input$rsid) &
+    is.finite(ld_input$pval),
+]
+
+clumped <- ieugwasr::ld_clump(
+  dat = ld_input,
+  clump_kb = 10000,
+  clump_r2 = 0.01,
+  clump_p = 1e-3,
+  bfile = LD_BFILE,
+  plink_bin = PLINK_BIN
+)
+
+top_vars <- clumped$rsid
+```
+
+```{r cause t2d to dep, eval=FALSE, include=FALSE}
+cause_t2d_dep <- cause::cause(
+  X = t2d_dep,
+  variants = top_vars,
+  param_ests = params,
+  pval_thresh = 1e-3
+)
+```
+
+#### Format Dep to Triglycerides
+```{r harmonizing and formatting dep tg, eval=FALSE, include=FALSE}
+dep_tg <- cause::gwas_merge(
+  dep,
+  tg,
+  snp_name_cols = c("SNP", "SNP"),
+  beta_hat_cols = c("BETA", "BETA"),
+  se_cols = c("SE", "SE"),
+  A1_cols = c("A1", "A1"),
+  A2_cols = c("A2", "A2")
+)
+
+saveRDS(dep_tg, "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/dep_tg.rds")
+```
+
+```{r MR CAUSE parameter estimation dep tg, eval=FALSE, include=FALSE}
+set.seed(100)
+varlist <- with(dep_tg, sample(snp, size=1000000, replace=FALSE))
+params <- est_cause_params(dep_tg, varlist)
+
+saveRDS(
+  params,
+  file.path(OUT_DIR, "CAUSE_params_dep_tg.rds")
+)
+```
+
+```{r clumping dep to tg, eval=FALSE, include=FALSE}
+
+dep_tg$p1 <- 2 * pnorm(
+  -abs(dep_tg$beta_hat_1 / dep_tg$seb1)
+)
+
+ld_input <- data.frame(
+  rsid = dep_tg$snp,
+  pval = dep_tg$p1,
+  id = "loneliness"
+)
+
+ld_input <- ld_input[
+  !is.na(ld_input$rsid) &
+    !duplicated(ld_input$rsid) &
+    is.finite(ld_input$pval),
+]
+
+clumped <- ieugwasr::ld_clump(
+  dat = ld_input,
+  clump_kb = 10000,
+  clump_r2 = 0.01,
+  clump_p = 1e-3,
+  bfile = LD_BFILE,
+  plink_bin = PLINK_BIN
+)
+
+top_vars <- clumped$rsid
+```
+
+```{r cause dep to tg, eval=FALSE, include=FALSE}
+cause_dep_tg <- cause::cause(
+  X = dep_tg,
+  variants = top_vars,
+  param_ests = params,
+  pval_thresh = 1e-3
+)
+```
+
+```{r plotting dep to tg, eval=FALSE, include=FALSE}
+summary(cause_dep_tg)
+cause_dep_tg$elpd
+plot(cause_dep_tg)
+summary(cause_dep_tg, ci_size = 0.95)
+
+saveRDS(cause_dep_tg, "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/cause_dep_tg.rds")
+```
+
+#### TG -> Dep
+```{r harmonizing and formatting tg dep, eval=FALSE, include=FALSE}
+tg_dep <- cause::gwas_merge(
+  tg,
+  dep,
+  snp_name_cols = c("SNP", "SNP"),
+  beta_hat_cols = c("BETA", "BETA"),
+  se_cols = c("SE", "SE"),
+  A1_cols = c("A1", "A1"),
+  A2_cols = c("A2", "A2")
+)
+
+saveRDS(tg_dep, "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/tg_dep.rds")
+```
+
+```{r MR CAUSE parameter estimation tg dep, eval=FALSE, include=FALSE}
+set.seed(100)
+varlist <- with(tg_dep, sample(snp, size=1000000, replace=FALSE))
+params <- est_cause_params(tg_dep, varlist)
+
+saveRDS(
+  params,
+  file.path(OUT_DIR, "CAUSE_params_tg_dep.rds")
+)
+```
+
+```{r clumping tg to dep, eval=FALSE, include=FALSE}
+
+tg_dep$p1 <- 2 * pnorm(
+  -abs(tg_dep$beta_hat_1 / tg_dep$seb1)
+)
+
+ld_input <- data.frame(
+  rsid = tg_dep$snp,
+  pval = tg_dep$p1,
+  id = "loneliness"
+)
+
+ld_input <- ld_input[
+  !is.na(ld_input$rsid) &
+    !duplicated(ld_input$rsid) &
+    is.finite(ld_input$pval),
+]
+
+clumped <- ieugwasr::ld_clump(
+  dat = ld_input,
+  clump_kb = 10000,
+  clump_r2 = 0.01,
+  clump_p = 1e-3,
+  bfile = LD_BFILE,
+  plink_bin = PLINK_BIN
+)
+
+top_vars <- clumped$rsid
+```
+
+```{r cause tg to dep, eval=FALSE, include=FALSE}
+cause_tg_dep <- cause::cause(
+  X = tg_dep,
+  variants = top_vars,
+  param_ests = params,
+  pval_thresh = 1e-3
+)
+```
+
+```{r plotting tg to dep, eval=FALSE, include=FALSE}
+summary(cause_tg_dep)
+cause_tg_dep$elpd
+plot(cause_tg_dep)
+summary(cause_tg_dep, ci_size = 0.95)
+
+saveRDS(cause_tg_dep, "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/cause_tg_dep.rds")
+```
+#### Lone -> Dep
+```{r harmonizing and formatting lone dep, eval=FALSE, include=FALSE}
+lone_dep <- cause::gwas_merge(
+  lone,
+  dep,
+  snp_name_cols = c("SNP", "SNP"),
+  beta_hat_cols = c("BETA", "BETA"),
+  se_cols = c("SE", "SE"),
+  A1_cols = c("A1", "A1"),
+  A2_cols = c("A2", "A2")
+)
+
+saveRDS(lone_dep, "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/lone_dep.rds")
+```
+
+```{r MR CAUSE parameter estimation lone dep, eval=FALSE, include=FALSE}
+set.seed(100)
+varlist <- with(lone_dep, sample(snp, size=1000000, replace=FALSE))
+params <- est_cause_params(lone_dep, varlist)
+
+saveRDS(
+  params,
+  file.path(OUT_DIR, "CAUSE_params_lone_dep.rds")
+)
+```
+
+```{r clumping lone to dep, eval=FALSE, include=FALSE}
+
+lone_dep$p1 <- 2 * pnorm(
+  -abs(lone_dep$beta_hat_1 / lone_dep$seb1)
+)
+
+ld_input <- data.frame(
+  rsid = lone_dep$snp,
+  pval = lone_dep$p1,
+  id = "loneliness"
+)
+
+ld_input <- ld_input[
+  !is.na(ld_input$rsid) &
+    !duplicated(ld_input$rsid) &
+    is.finite(ld_input$pval),
+]
+
+clumped <- ieugwasr::ld_clump(
+  dat = ld_input,
+  clump_kb = 10000,
+  clump_r2 = 0.01,
+  clump_p = 1e-3,
+  bfile = LD_BFILE,
+  plink_bin = PLINK_BIN
+)
+
+top_vars <- clumped$rsid
+```
+
+```{r cause lone to dep, eval=FALSE, include=FALSE}
+cause_lone_dep <- cause::cause(
+  X = lone_dep,
+  variants = top_vars,
+  param_ests = params,
+  pval_thresh = 1e-3
+)
+```
+
+```{r plotting lone to dep, eval=FALSE, include=FALSE}
+summary(cause_lone_dep)
+cause_lone_dep$elpd
+plot(cause_lone_dep)
+summary(cause_lone_dep, ci_size = 0.95)
+
+saveRDS(cause_lone_dep, "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/cause_lone_dep.rds")
+```
+```{r Dep to Lone, eval=FALSE, include=FALSE}
+dep_lone <- cause::gwas_merge(
+  dep,
+  lone,
+  snp_name_cols = c("SNP", "SNP"),
+  beta_hat_cols = c("BETA", "BETA"),
+  se_cols = c("SE", "SE"),
+  A1_cols = c("A1", "A1"),
+  A2_cols = c("A2", "A2")
+)
+
+saveRDS(dep_lone, "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/dep_lone.rds")
+```
+
+```{r MR CAUSE parameter estimation dep lone, eval=FALSE, include=FALSE}
+set.seed(100)
+varlist <- with(dep_lone, sample(snp, size=1000000, replace=FALSE))
+params <- est_cause_params(dep_lone, varlist)
+
+saveRDS(
+  params,
+  file.path(OUT_DIR, "CAUSE_params_dep_lone.rds")
+)
+```
+
+```{r clumping dep to lone, eval=FALSE, include=FALSE}
+
+dep_lone$p1 <- 2 * pnorm(
+  -abs(dep_lone$beta_hat_1 / dep_lone$seb1)
+)
+
+ld_input <- data.frame(
+  rsid = dep_lone$snp,
+  pval = dep_lone$p1,
+  id = "loneliness"
+)
+
+ld_input <- ld_input[
+  !is.na(ld_input$rsid) &
+    !duplicated(ld_input$rsid) &
+    is.finite(ld_input$pval),
+]
+
+clumped <- ieugwasr::ld_clump(
+  dat = ld_input,
+  clump_kb = 10000,
+  clump_r2 = 0.01,
+  clump_p = 1e-3,
+  bfile = LD_BFILE,
+  plink_bin = PLINK_BIN
+)
+
+top_vars <- clumped$rsid
+
+
+```
+
+```{r cause dep to lone, eval=FALSE, include=FALSE}
+cause_dep_lone <- cause::cause(
+  X = dep_lone,
+  variants = top_vars,
+  param_ests = params,
+  pval_thresh = 1e-3
+)
+```
+```{r plotting dep to lone, eval=FALSE, include=FALSE}
+summary(cause_dep_lone)
+cause_dep_lone$elpd
+plot(cause_dep_lone)
+summary(cause_dep_lone, ci_size = 0.95)
+
+saveRDS(cause_dep_lone, "/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/cause_dep_lone.rds")
+```
+### Read in Cluster 1e-5 Results
+
+```{r}
+load("/vast/palmer/pi/polimanti/ellen_m/immune/results/two_sample_mr/cause/p1e-5_sensitivity/cause_sensitivity_p1e-5_all_results.RData")
+```
+
+```{r make cause plot data, include=FALSE}
+library(data.table)
+library(ggplot2)
+
+plot_data <- as.data.table(cause_summary_p1e5)
+
+plot_data <- plot_data[
+  run_status == "completed" &
+    is.finite(causal_gamma_median) &
+    is.finite(causal_gamma_ci_low) &
+    is.finite(causal_gamma_ci_high)
+]
+
+plot_data[, comparison := gsub("_to_", " \u2192 ", analysis)]
+plot_data[, model_comparison := factor(
+  causal_model_favored,
+  levels = c(FALSE, TRUE),
+  labels = c("Causal model not favored", "Causal model favored")
+)]
+
+plot_data[, comparison := gsub(
+  "lone", "Loneliness",
+  gsub("tg", "TG",
+       gsub("t2d", "T2D",
+            gsub("dep", "Depression", comparison, ignore.case = TRUE),
+            ignore.case = TRUE),
+       ignore.case = TRUE),
+  ignore.case = TRUE
+)]
+
+gamma_order <- plot_data[order(-causal_gamma_median), as.character(comparison)]
+plot_data[, comparison := factor(comparison, levels = gamma_order)]v
+p_gamma <- ggplot(
+  plot_data,
+  aes(x = causal_gamma_median, y = comparison, color = model_comparison)
+) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey60") +
+  geom_errorbar(
+    aes(xmin = causal_gamma_ci_low, xmax = causal_gamma_ci_high),
+    orientation = "y",
+    width = 0.2
+  ) +
+  geom_point(size = 2.8) +
+  scale_color_manual(
+    values = c("Causal model not favored" = "grey45",
+               "Causal model favored" = "#0279EE"),
+    name = NULL
+  ) +
+  labs(
+    x = "CAUSE causal-model median gamma (95% credible interval)",
+    y = NULL,
+    title = "CAUSE sensitivity analyses at p = 1e-5"
+  ) +
+  theme_bw(base_size = 12) +
+  theme(legend.position = "top")
+
+p_gamma
+```
+
+
+
+```{r plotting cause, echo=FALSE}
+library(data.table)
+library(ggplot2)
+
+
+cause_labels <- c(
+  lone_to_tg = "Loneliness \u2192 TG",
+  tg_to_lone = "TG \u2192 Loneliness",
+  lone_to_t2d = "Loneliness \u2192 T2D",
+  t2d_to_lone = "T2D \u2192 Loneliness",
+  t2d_to_tg = "T2D \u2192 TG",
+  tg_to_t2d = "TG \u2192 T2D",
+  dep_to_tg = "Depression \u2192 TG",
+  tg_to_dep = "TG \u2192 Depression",
+  dep_to_t2d = "Depression \u2192 T2D",
+  t2d_to_dep = "T2D \u2192 Depression",
+  lone_to_dep = "Loneliness \u2192 Depression",
+  dep_to_lone = "Depression \u2192 Loneliness"
+
+)
+
+cause_plot_data[, comparison_label := unname(cause_labels[as.character(comparison)])]
+cause_plot_data[is.na(comparison_label), comparison_label := as.character(comparison)]
+
+# Preserve the existing order, but display the directional labels.
+label_order <- cause_plot_data[order(abs(gamma)), comparison_label]
+cause_plot_data[, comparison_label := factor(comparison_label, levels = label_order)]
+
+# In the plot, replace y = comparison with y = comparison_label.
+p_cause_plot <- ggplot(
+  cause_plot_data,
+  aes(x = gamma, y = comparison_label, color = causal_model_favored)
+) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey55") +
+  geom_errorbar(
+    aes(xmin = ci_low, xmax = ci_high),
+    orientation = "y",
+    width = 0.2,
+    linewidth = 0.7
+  ) +
+  geom_point(size = 2.8) +
+  geom_text(
+    aes(label = p_label),
+    x = Inf,
+    hjust = 1.05,
+    color = "grey25",
+    size = 3.2
+  ) +
+  scale_color_manual(
+    values = c(`FALSE` = "grey45", `TRUE` = "#1676D2"),
+    labels = c(`FALSE` = "Causal model not favored",
+               `TRUE` = "Causal model favored"),
+    name = NULL
+  ) +
+  scale_x_continuous(expand = expansion(mult = c(0.08, 0.45))) +
+  labs(
+    x = "CAUSE gamma, posterior median and 95% credible interval",
+    y = NULL,
+    title = "CAUSE causal-effect estimates across trait pairs"
+  ) +
+  theme_bw(base_size = 12) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    legend.position = "top"
+  )
+
+p_cause_plot
+```
