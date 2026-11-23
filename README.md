@@ -8,6 +8,8 @@ The project aims to characterize shared genetic architecture between loneliness-
 
 ## Quick Access to Results
 [GenomicSEM Mediation Analyses](https://ellenmartin11.github.io/immune-loneliness/scripts/8_gsem_loneliness.html)
+[Two Sample MR Analyses](https://ellenmartin11.github.io/immune-loneliness/scripts/9_mr_loneliness.html)
+[MR CAUSE Analyses](https://ellenmartin11.github.io/immune-loneliness/scripts/10_mr_cause.nb.html)
 
 ## Research Questions
 
@@ -23,12 +25,11 @@ The main questions include:
 
 ### Social and Behavioral Traits
 
-Phenotypes of interest may include:
+Phenotypes of interest include:
 
 - Loneliness
 - Social isolation
-- Social connection and related psychosocial traits
-- Behavioral and health-related covariates where relevant
+- Behavioral and health-related covariates where relevant (BMI, Income)
 
 ### Immune and Inflammatory Traits
 
@@ -60,9 +61,8 @@ Depending on the phenotype and available data, analyses may include:
 - GWAS summary-statistic harmonization and quality control
 - SNP-based heritability estimation
 - Genetic correlation using LD Score Regression (LDSC)
-- Cross-cohort phenotype comparison and replication
-- Mendelian randomization
 - Conditional and joint genetic analyses
+- Mendelian randomization and sensitivity analyses (CAUSE, PRESSO, LCV)
 - Genomic structural equation modeling where appropriate
 - Sensitivity analyses across phenotype definitions and cohorts
 
@@ -119,6 +119,9 @@ Common tools used in this project may include:
 - GenomicSEM
 - METAL
 - Mendelian randomization packages
+- TwoSampleMR
+- LCV
+- CAUSE
 - SLURM for job scheduling
 
 ## Data Privacy and Access
